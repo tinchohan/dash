@@ -559,50 +559,77 @@ app.get('/stats/stores', (req, res) => {
 
 app.get('/stats/recent-sales', (req, res) => {
   console.log('Stats recent sales called');
-  const { sql, params } = whereAndParams(req.query);
+  const { fromDate, toDate, storeIds } = req.query;
   
-  // Obtener las últimas 3 órdenes con sus productos principales
-  const recentOrders = db.prepare(`
-    SELECT 
-      o.id,
-      o.store_id,
-      o.total_amount,
-      o.payment_method,
-      o.created_at,
-      p.product_name,
-      p.quantity,
-      p.total_amount as product_amount
-    FROM sale_orders o
-    LEFT JOIN sale_products p ON o.id = p.order_id
-    ${sql}
-    ORDER BY o.created_at DESC, p.total_amount DESC
-    LIMIT 3
-  `).all(params);
+  // Construir WHERE clause manualmente para el JOIN
+  const where = [];
+  const params = {};
   
-  // Agrupar por orden y tomar el producto principal (mayor monto)
-  const groupedOrders = {};
-  recentOrders.forEach(row => {
-    if (!groupedOrders[row.id]) {
-      groupedOrders[row.id] = {
-        id: row.id,
-        store_id: row.store_id,
-        total_amount: row.total_amount,
-        payment_method: row.payment_method,
-        created_at: row.created_at,
-        main_product: null,
-        main_product_amount: 0
-      };
+  if (fromDate) {
+    where.push('o.created_at >= @fromDate');
+    params.fromDate = fromDate;
+  }
+  if (toDate) {
+    where.push('o.created_at <= @toDate');
+    params.toDate = toDate + ' 23:59:59';
+  }
+  if (storeIds) {
+    const ids = storeIds.split(',').filter(Boolean);
+    if (ids.length > 0) {
+      where.push(`o.store_id IN (${ids.map((_, i) => `@s${i}`).join(',')})`);
+      ids.forEach((v, i) => (params[`s${i}`] = Number(v)));
     }
+  }
+  
+  const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  
+  try {
+    // Obtener las últimas 3 órdenes con sus productos principales
+    const recentOrders = db.prepare(`
+      SELECT 
+        o.id,
+        o.store_id,
+        o.total_amount,
+        o.payment_method,
+        o.created_at,
+        p.product_name,
+        p.quantity,
+        p.total_amount as product_amount
+      FROM sale_orders o
+      LEFT JOIN sale_products p ON o.id = p.order_id
+      ${whereClause}
+      ORDER BY o.created_at DESC, p.total_amount DESC
+      LIMIT 10
+    `).all(params);
     
-    // Mantener el producto con mayor monto
-    if (row.product_amount > groupedOrders[row.id].main_product_amount) {
-      groupedOrders[row.id].main_product = row.product_name;
-      groupedOrders[row.id].main_product_amount = row.product_amount;
-    }
-  });
-  
-  const result = Object.values(groupedOrders).slice(0, 3);
-  res.json({ recentSales: result });
+    // Agrupar por orden y tomar el producto principal (mayor monto)
+    const groupedOrders = {};
+    recentOrders.forEach(row => {
+      if (!groupedOrders[row.id]) {
+        groupedOrders[row.id] = {
+          id: row.id,
+          store_id: row.store_id,
+          total_amount: row.total_amount,
+          payment_method: row.payment_method,
+          created_at: row.created_at,
+          main_product: null,
+          main_product_amount: 0
+        };
+      }
+      
+      // Mantener el producto con mayor monto
+      if (row.product_amount && row.product_amount > groupedOrders[row.id].main_product_amount) {
+        groupedOrders[row.id].main_product = row.product_name;
+        groupedOrders[row.id].main_product_amount = row.product_amount;
+      }
+    });
+    
+    const result = Object.values(groupedOrders).slice(0, 3);
+    res.json({ recentSales: result });
+  } catch (error) {
+    console.error('Error in recent-sales endpoint:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Serve static files
