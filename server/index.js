@@ -14,15 +14,22 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-
-console.log('Environment check:', {
-  PORT,
-  SQLITE_PATH: process.env.SQLITE_PATH,
-  NODE_ENV: process.env.NODE_ENV,
-  hasAccounts: process.env.LINISCO_EMAIL_1 ? 'yes' : 'no'
-});
 // Healthcheck endpoint
-app.get('/healthz', (_req, res) => res.json({ ok: true }));
+app.get('/healthz', (_req, res) => {
+  console.log('Healthcheck called');
+  res.json({ 
+    ok: true, 
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    memory: process.memoryUsage()
+  });
+});
+
+// Additional diagnostic endpoint
+app.get('/ping', (_req, res) => {
+  console.log('Ping called');
+  res.json({ pong: true, time: Date.now() });
+});
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
@@ -56,9 +63,10 @@ app.get('*', (_req, res) => {
   res.sendFile(path.join(publicDir, 'index.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`Server listening on :${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server listening on 0.0.0.0:${PORT}`);
   console.log('Healthcheck available at /healthz');
+  console.log('Ping available at /ping');
   console.log('Static files served from:', path.join(__dirname, 'public'));
 });
 
