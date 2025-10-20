@@ -30,8 +30,8 @@ ENV NODE_ENV=production
 # Copy server with node_modules and built static files
 COPY --from=builder /app/server /app/server
 
-# Ensure only production deps are present (if devs slipped in)
-RUN npm --prefix server ci --omit=dev || npm --prefix server install --omit=dev
+# Keep node_modules from builder to preserve native binaries (better-sqlite3)
+# If you need to prune devDeps later, consider `npm prune --omit=dev` but ensure no rebuilds occur.
 
 EXPOSE 3000
 CMD ["node", "server/index.js"]

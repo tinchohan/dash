@@ -14,6 +14,8 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+// Healthcheck endpoint
+app.get('/healthz', (_req, res) => res.json({ ok: true }));
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
