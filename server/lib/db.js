@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,7 +18,15 @@ export function getDb() {
 export function initDatabase() {
   const dbPath = process.env.SQLITE_PATH || path.join(__dirname, '..', 'data.db');
   console.log('Initializing database at:', dbPath);
+  
   try {
+    // Ensure directory exists
+    const dbDir = path.dirname(dbPath);
+    if (!fs.existsSync(dbDir)) {
+      console.log('Creating directory:', dbDir);
+      fs.mkdirSync(dbDir, { recursive: true });
+    }
+    
     db = new Database(dbPath);
     db.pragma('journal_mode = WAL');
     migrate(db);
