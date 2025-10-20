@@ -1,0 +1,14 @@
+{
+  "name": "dash-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "npm --prefix client run build && npm --prefix server run build:client",
+    "start": "node server/index.js"
+  }
+}
+
+
