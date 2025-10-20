@@ -150,6 +150,7 @@ export function App() {
     try { return localStorage.getItem('theme') || 'dark' } catch { return 'dark' }
   })
   const [topPage, setTopPage] = useState(0)
+  const [autoSyncStatus, setAutoSyncStatus] = useState(null)
 
   async function loadAll() {
     const qs = new URLSearchParams({ fromDate, toDate, storeIds }).toString()
@@ -187,6 +188,17 @@ export function App() {
     api('/stats/stores').then((res) => setStores(res.stores || [])).catch(() => {})
   }, [logged])
 
+  // Cargar estado del auto-sync
+  useEffect(() => {
+    if (!logged) return
+    const loadAutoSyncStatus = () => {
+      api('/sync/status').then(setAutoSyncStatus).catch(() => {})
+    }
+    loadAutoSyncStatus()
+    const interval = setInterval(loadAutoSyncStatus, 30000) // Cada 30 segundos
+    return () => clearInterval(interval)
+  }, [logged])
+
   const onSync = async () => {
     await api('/sync', { method: 'POST', body: JSON.stringify({ fromDate, toDate }) })
     await loadAll()
@@ -211,6 +223,18 @@ export function App() {
         <div className="container-fluid">
           <span className="navbar-brand mb-0 h1">Dash</span>
           <div className="d-flex align-items-center gap-2">
+            {autoSyncStatus && (
+              <div className="d-flex align-items-center me-2">
+                <div className={`badge ${autoSyncStatus.autoSyncEnabled ? 'bg-success' : 'bg-secondary'} me-1`}>
+                  {autoSyncStatus.autoSyncEnabled ? '🔄 Auto' : '⏸️ Manual'}
+                </div>
+                {autoSyncStatus.lastAutoSync && (
+                  <small className="text-muted">
+                    Última: {new Date(autoSyncStatus.lastAutoSync).toLocaleTimeString()}
+                  </small>
+                )}
+              </div>
+            )}
             <div className="form-check form-switch me-2">
               <input className="form-check-input" type="checkbox" role="switch" id="themeSwitch" checked={theme === 'dark'} onChange={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
               <label className="form-check-label" htmlFor="themeSwitch">{theme === 'dark' ? 'Oscuro' : 'Claro'}</label>

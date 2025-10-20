@@ -268,71 +268,82 @@ function insertSessions(db, rows, email) {
   tx(rows || []);
 }
 
+// Función reutilizable para sincronización
+async function performSync(fromDate, toDate, isAutoSync = false) {
+  console.log(`${isAutoSync ? 'Auto' : 'Manual'} sync called:`, { fromDate, toDate });
+  const from = parseDateStr(fromDate || dayjs().format('YYYY-MM-DD'));
+  const to = parseDateStr(toDate || dayjs().format('YYYY-MM-DD'));
+  const accounts = getAccountsFromEnv();
+  
+  if (accounts.length === 0) {
+    throw new Error('No hay cuentas configuradas');
+  }
+
+  console.log(`Syncing ${accounts.length} accounts from ${from} to ${to}`);
+  
+  const results = [];
+  for (const { email, password } of accounts) {
+    const accResult = { email, ok: true };
+    try {
+      console.log(`Logging in ${email}...`);
+      const token = await login(email, password);
+      
+      console.log(`Fetching data for ${email}...`);
+      const [orders, products, sessions] = await Promise.all([
+        fetchEndpoint('/sale_orders', email, token, from, to),
+        fetchEndpoint('/sale_products', email, token, from, to),
+        fetchEndpoint('/psessions', email, token, from, to)
+      ]);
+      
+      // Save to database
+      insertOrders(db, orders, email);
+      insertProducts(db, products, email);
+      insertSessions(db, sessions, email);
+      
+      accResult.counts = {
+        sale_orders: Array.isArray(orders) ? orders.length : 0,
+        sale_products: Array.isArray(products) ? products.length : 0,
+        psessions: Array.isArray(sessions) ? sessions.length : 0,
+      };
+      
+      console.log(`Success for ${email}:`, accResult.counts);
+    } catch (e) {
+      console.error(`Error for ${email}:`, e.message);
+      accResult.ok = false;
+      accResult.error = e.message;
+    }
+    results.push(accResult);
+  }
+
+  const failed = results.filter(r => !r.ok);
+  if (failed.length > 0) {
+    console.warn(`Failed accounts: ${failed.map(f => f.email).join(', ')}`);
+  }
+
+  return {
+    ok: true,
+    results,
+    fromDate: from,
+    toDate: to,
+    isAutoSync
+  };
+}
+
 app.post('/sync', async (req, res) => {
   try {
-    console.log('Sync called with:', req.body);
     const { fromDate, toDate } = req.body || {};
-    const from = parseDateStr(fromDate || dayjs().format('YYYY-MM-DD'));
-    const to = parseDateStr(toDate || dayjs().format('YYYY-MM-DD'));
-    const accounts = getAccountsFromEnv();
+    const result = await performSync(fromDate, toDate, false);
     
-    if (accounts.length === 0) {
-      return res.status(400).json({ error: 'No hay cuentas configuradas' });
-    }
-
-    console.log(`Syncing ${accounts.length} accounts from ${from} to ${to}`);
-    
-    const results = [];
-    for (const { email, password } of accounts) {
-      const accResult = { email, ok: true };
-      try {
-        console.log(`Logging in ${email}...`);
-        const token = await login(email, password);
-        
-        console.log(`Fetching data for ${email}...`);
-        const [orders, products, sessions] = await Promise.all([
-          fetchEndpoint('/sale_orders', email, token, from, to),
-          fetchEndpoint('/sale_products', email, token, from, to),
-          fetchEndpoint('/psessions', email, token, from, to)
-        ]);
-        
-        // Save to database
-        insertOrders(db, orders, email);
-        insertProducts(db, products, email);
-        insertSessions(db, sessions, email);
-        
-        accResult.counts = {
-          sale_orders: Array.isArray(orders) ? orders.length : 0,
-          sale_products: Array.isArray(products) ? products.length : 0,
-          psessions: Array.isArray(sessions) ? sessions.length : 0,
-        };
-        
-        console.log(`Success for ${email}:`, accResult.counts);
-      } catch (e) {
-        console.error(`Error for ${email}:`, e.message);
-        accResult.ok = false;
-        accResult.error = e.message;
-      }
-      results.push(accResult);
-    }
-
-    const failed = results.filter(r => !r.ok);
+    const failed = result.results.filter(r => !r.ok);
     if (failed.length) {
       return res.status(207).json({ 
         ok: false, 
         partial: true, 
-        results, 
-        fromDate: from, 
-        toDate: to 
+        ...result
       });
     }
     
-    res.json({ 
-      ok: true, 
-      results, 
-      fromDate: from, 
-      toDate: to 
-    });
+    res.json(result);
   } catch (err) {
     console.error('Sync error:', err);
     res.status(500).json({ error: err.message });
@@ -422,6 +433,49 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(publicDir, 'index.html'));
 });
 
+// Sistema de sincronización automática
+let autoSyncInterval;
+let lastAutoSync = null;
+
+function startAutoSync() {
+  // Sincronizar inmediatamente al iniciar
+  performAutoSync();
+  
+  // Luego cada hora (3600000 ms)
+  autoSyncInterval = setInterval(() => {
+    performAutoSync();
+  }, 60 * 60 * 1000);
+  
+  console.log('Auto-sync started: every hour for today\'s data');
+}
+
+async function performAutoSync() {
+  try {
+    const today = dayjs().format('YYYY-MM-DD');
+    console.log(`🔄 Auto-sync starting for today: ${today}`);
+    
+    const result = await performSync(today, today, true);
+    lastAutoSync = new Date();
+    
+    console.log(`✅ Auto-sync completed for ${today}:`, {
+      success: result.results.filter(r => r.ok).length,
+      failed: result.results.filter(r => !r.ok).length,
+      totalOrders: result.results.reduce((sum, r) => sum + (r.counts?.sale_orders || 0), 0)
+    });
+  } catch (error) {
+    console.error('❌ Auto-sync failed:', error.message);
+  }
+}
+
+// Endpoint para ver estado de auto-sync
+app.get('/sync/status', (req, res) => {
+  res.json({
+    autoSyncEnabled: !!autoSyncInterval,
+    lastAutoSync: lastAutoSync,
+    nextAutoSync: autoSyncInterval ? new Date(Date.now() + 60 * 60 * 1000) : null
+  });
+});
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Hybrid server listening on 0.0.0.0:${PORT}`);
   console.log('Healthcheck: /healthz');
@@ -432,6 +486,11 @@ app.listen(PORT, '0.0.0.0', () => {
   } catch (e) {
     console.log('Error reading public dir:', e.message);
   }
+  
+  // Iniciar auto-sync después de que el servidor esté listo
+  setTimeout(() => {
+    startAutoSync();
+  }, 5000); // 5 segundos de delay para asegurar que todo esté inicializado
 });
 
 // Keep process alive
