@@ -557,6 +557,54 @@ app.get('/stats/stores', (req, res) => {
   res.json({ stores: ['63953', '66220', '72267', '30036', '30038', '10019', '10020'] });
 });
 
+app.get('/stats/recent-sales', (req, res) => {
+  console.log('Stats recent sales called');
+  const { sql, params } = whereAndParams(req.query);
+  
+  // Obtener las últimas 3 órdenes con sus productos principales
+  const recentOrders = db.prepare(`
+    SELECT 
+      o.id,
+      o.store_id,
+      o.total_amount,
+      o.payment_method,
+      o.created_at,
+      p.product_name,
+      p.quantity,
+      p.total_amount as product_amount
+    FROM sale_orders o
+    LEFT JOIN sale_products p ON o.id = p.order_id
+    ${sql}
+    ORDER BY o.created_at DESC, p.total_amount DESC
+    LIMIT 3
+  `).all(params);
+  
+  // Agrupar por orden y tomar el producto principal (mayor monto)
+  const groupedOrders = {};
+  recentOrders.forEach(row => {
+    if (!groupedOrders[row.id]) {
+      groupedOrders[row.id] = {
+        id: row.id,
+        store_id: row.store_id,
+        total_amount: row.total_amount,
+        payment_method: row.payment_method,
+        created_at: row.created_at,
+        main_product: null,
+        main_product_amount: 0
+      };
+    }
+    
+    // Mantener el producto con mayor monto
+    if (row.product_amount > groupedOrders[row.id].main_product_amount) {
+      groupedOrders[row.id].main_product = row.product_name;
+      groupedOrders[row.id].main_product_amount = row.product_amount;
+    }
+  });
+  
+  const result = Object.values(groupedOrders).slice(0, 3);
+  res.json({ recentSales: result });
+});
+
 // Serve static files
 const publicDir = path.join(__dirname, 'public');
 app.use(express.static(publicDir));

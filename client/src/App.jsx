@@ -152,19 +152,22 @@ export function App() {
   })
   const [topPage, setTopPage] = useState(0)
   const [autoSyncStatus, setAutoSyncStatus] = useState(null)
+  const [recentSales, setRecentSales] = useState([])
 
   async function loadAll() {
     const qs = new URLSearchParams({ fromDate, toDate, storeIds }).toString()
-    const [ov, bs, dy, tp] = await Promise.all([
+    const [ov, bs, dy, tp, rs] = await Promise.all([
       api(`/stats/overview?${qs}`),
       api(`/stats/by-store?${qs}`),
       api(`/stats/daily?${qs}`),
       api(`/stats/top-products?${qs}`),
+      api(`/stats/recent-sales?${qs}`),
     ])
     setOverview(ov)
     setByStore(bs.stores)
     setDaily(dy.days)
     setTopProducts(tp.products)
+    setRecentSales(rs.recentSales)
   }
 
   useEffect(() => {
@@ -293,6 +296,55 @@ export function App() {
                     <li key={g.group}>{g.group}: {fmt.format(g.total || 0)} ({g.count})</li>
                   ))}
                 </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {recentSales && recentSales.length > 0 && (
+        <div className="row g-3 my-1">
+          <div className="col-12">
+            <div className="card">
+              <div className="card-body">
+                <h5 className="card-title">Últimas Ventas</h5>
+                <div className="row">
+                  {recentSales.map((sale, index) => (
+                    <div key={sale.id} className="col-12 col-md-4 mb-3">
+                      <div className="card h-100" style={{ border: '1px solid #dee2e6' }}>
+                        <div className="card-body">
+                          <div className="d-flex justify-content-between align-items-start mb-2">
+                            <h6 className="card-title mb-0">
+                              {storeNames[sale.store_id] || `Tienda ${sale.store_id}`}
+                            </h6>
+                            <small className="text-muted">
+                              {new Date(sale.created_at).toLocaleTimeString()}
+                            </small>
+                          </div>
+                          <div className="mb-2">
+                            <strong className="text-success" style={{ fontSize: '1.2rem' }}>
+                              {fmt.format(sale.total_amount || 0)}
+                            </strong>
+                          </div>
+                          {sale.main_product && (
+                            <div className="mb-2">
+                              <small className="text-muted">Producto principal:</small>
+                              <div className="fw-bold">{sale.main_product}</div>
+                              <small className="text-muted">
+                                {sale.main_product_amount ? fmt.format(sale.main_product_amount) : 'N/A'}
+                              </small>
+                            </div>
+                          )}
+                          <div className="mt-auto">
+                            <span className="badge bg-secondary">
+                              {sale.payment_method || 'N/A'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
