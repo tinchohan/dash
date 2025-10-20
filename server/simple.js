@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -38,7 +39,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log('Ping: /ping');
   console.log('Static files from:', publicDir);
   try {
-    console.log('Files available:', require('fs').readdirSync(publicDir));
+    console.log('Files available:', fs.readdirSync(publicDir));
   } catch (e) {
     console.log('Error reading public dir:', e.message);
   }
