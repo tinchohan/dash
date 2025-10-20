@@ -19,30 +19,30 @@ services:
       - key: LINISCO_LOGIN
         value: https://pos.linisco.com.ar/users/sign_in
       - key: LINISCO_EMAIL_1
-        value: YOUR_EMAIL_1
+        value: 63953@linisco.com.ar
       - key: LINISCO_PASSWORD_1
         value: YOUR_PASSWORD_1
       - key: LINISCO_EMAIL_2
-        value: YOUR_EMAIL_2
+        value: 66220@linisco.com.ar
       - key: LINISCO_PASSWORD_2
         value: YOUR_PASSWORD_2
       - key: LINISCO_EMAIL_3
-        value: YOUR_EMAIL_3
+        value: 72267@linisco.com.ar
       - key: LINISCO_PASSWORD_3
         value: YOUR_PASSWORD_3
       - key: LINISCO_EMAIL_4
-        value: YOUR_EMAIL_4
+        value: 30036@linisco.com.ar
       - key: LINISCO_PASSWORD_4
         value: YOUR_PASSWORD_4
       - key: LINISCO_EMAIL_5
-        value: YOUR_EMAIL_5
+        value: 30038@linisco.com.ar
       - key: LINISCO_PASSWORD_5
         value: YOUR_PASSWORD_5
       - key: LINISCO_EMAIL_6
-        value: YOUR_EMAIL_6
+        value: 10019@linisco.com.ar
       - key: LINISCO_PASSWORD_6
         value: YOUR_PASSWORD_6
       - key: LINISCO_EMAIL_7
-        value: YOUR_EMAIL_7
+        value: 10020@linisco.com.ar
       - key: LINISCO_PASSWORD_7
         value: YOUR_PASSWORD_7
