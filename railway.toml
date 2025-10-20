@@ -1,10 +1,10 @@
-[build]
-buildCommand = "bash -lc 'curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && apt-get install -y nodejs && npm install && npm run build'"
-
 [deploy]
-startCommand = "node server/index.js"
 healthcheckPath = "/"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
+
+[build]
+dockerfilePath = "Dockerfile"
+buildCommand = ""
 
 
