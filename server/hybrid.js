@@ -73,6 +73,14 @@ function migrate(dbInstance) {
       created_at TEXT,
       raw JSON
     );
+    CREATE TABLE IF NOT EXISTS sync_state (
+      account_email TEXT PRIMARY KEY,
+      last_order_id INTEGER DEFAULT 0,
+      last_product_id INTEGER DEFAULT 0,
+      last_session_id INTEGER DEFAULT 0,
+      last_poll_at TEXT,
+      last_full_sync_at TEXT
+    );
     CREATE INDEX IF NOT EXISTS idx_orders_date ON sale_orders(created_at);
     CREATE INDEX IF NOT EXISTS idx_products_date ON sale_products(created_at);
     CREATE INDEX IF NOT EXISTS idx_sessions_date ON psessions(created_at);
@@ -268,6 +276,119 @@ function insertSessions(db, rows, email) {
   tx(rows || []);
 }
 
+// Funciones para polling inteligente
+function getSyncState(db, email) {
+  const stmt = db.prepare('SELECT * FROM sync_state WHERE account_email = ?');
+  return stmt.get(email) || {
+    account_email: email,
+    last_order_id: 0,
+    last_product_id: 0,
+    last_session_id: 0,
+    last_poll_at: null,
+    last_full_sync_at: null
+  };
+}
+
+function updateSyncState(db, email, updates) {
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO sync_state 
+    (account_email, last_order_id, last_product_id, last_session_id, last_poll_at, last_full_sync_at)
+    VALUES (@account_email, @last_order_id, @last_product_id, @last_session_id, @last_poll_at, @last_full_sync_at)
+  `);
+  
+  const current = getSyncState(db, email);
+  const newState = { ...current, ...updates };
+  
+  stmt.run({
+    account_email: email,
+    last_order_id: newState.last_order_id,
+    last_product_id: newState.last_product_id,
+    last_session_id: newState.last_session_id,
+    last_poll_at: newState.last_poll_at,
+    last_full_sync_at: newState.last_full_sync_at
+  });
+}
+
+async function pollNewData(email, password) {
+  try {
+    console.log(`🔍 Polling new data for ${email}...`);
+    const token = await login(email, password);
+    const syncState = getSyncState(db, email);
+    
+    // Obtener datos desde el último ID conocido
+    const [newOrders, newProducts, newSessions] = await Promise.all([
+      fetchEndpointSince('/sale_orders', email, token, syncState.last_order_id),
+      fetchEndpointSince('/sale_products', email, token, syncState.last_product_id),
+      fetchEndpointSince('/psessions', email, token, syncState.last_session_id)
+    ]);
+    
+    let hasNewData = false;
+    let maxOrderId = syncState.last_order_id;
+    let maxProductId = syncState.last_product_id;
+    let maxSessionId = syncState.last_session_id;
+    
+    // Procesar nuevas órdenes
+    if (Array.isArray(newOrders) && newOrders.length > 0) {
+      insertOrders(db, newOrders, email);
+      maxOrderId = Math.max(maxOrderId, ...newOrders.map(o => o.idSaleOrder || o.id || 0));
+      hasNewData = true;
+      console.log(`📦 New orders: ${newOrders.length}`);
+    }
+    
+    // Procesar nuevos productos
+    if (Array.isArray(newProducts) && newProducts.length > 0) {
+      insertProducts(db, newProducts, email);
+      maxProductId = Math.max(maxProductId, ...newProducts.map(p => p.idSaleProduct || p.id || 0));
+      hasNewData = true;
+      console.log(`🛍️ New products: ${newProducts.length}`);
+    }
+    
+    // Procesar nuevas sesiones
+    if (Array.isArray(newSessions) && newSessions.length > 0) {
+      insertSessions(db, newSessions, email);
+      maxSessionId = Math.max(maxSessionId, ...newSessions.map(s => s.idSession || s.id || 0));
+      hasNewData = true;
+      console.log(`👥 New sessions: ${newSessions.length}`);
+    }
+    
+    // Actualizar estado de sincronización
+    updateSyncState(db, email, {
+      last_order_id: maxOrderId,
+      last_product_id: maxProductId,
+      last_session_id: maxSessionId,
+      last_poll_at: new Date().toISOString()
+    });
+    
+    return {
+      email,
+      success: true,
+      hasNewData,
+      counts: {
+        orders: Array.isArray(newOrders) ? newOrders.length : 0,
+        products: Array.isArray(newProducts) ? newProducts.length : 0,
+        sessions: Array.isArray(newSessions) ? newSessions.length : 0
+      }
+    };
+    
+  } catch (error) {
+    console.error(`❌ Polling error for ${email}:`, error.message);
+    return {
+      email,
+      success: false,
+      error: error.message,
+      hasNewData: false,
+      counts: { orders: 0, products: 0, sessions: 0 }
+    };
+  }
+}
+
+async function fetchEndpointSince(endpoint, email, token, sinceId) {
+  // Por ahora, usamos el mismo método pero podríamos optimizar
+  // para que la API externa soporte filtros por ID
+  const today = dayjs().format('YYYY-MM-DD');
+  return fetchEndpoint(endpoint, email, token, today, today);
+}
+
 // Función reutilizable para sincronización
 async function performSync(fromDate, toDate, isAutoSync = false) {
   console.log(`${isAutoSync ? 'Auto' : 'Manual'} sync called:`, { fromDate, toDate });
@@ -299,6 +420,18 @@ async function performSync(fromDate, toDate, isAutoSync = false) {
       insertOrders(db, orders, email);
       insertProducts(db, products, email);
       insertSessions(db, sessions, email);
+      
+      // Update sync state with latest IDs
+      const maxOrderId = Math.max(0, ...(Array.isArray(orders) ? orders.map(o => o.idSaleOrder || o.id || 0) : [0]));
+      const maxProductId = Math.max(0, ...(Array.isArray(products) ? products.map(p => p.idSaleProduct || p.id || 0) : [0]));
+      const maxSessionId = Math.max(0, ...(Array.isArray(sessions) ? sessions.map(s => s.idSession || s.id || 0) : [0]));
+      
+      updateSyncState(db, email, {
+        last_order_id: maxOrderId,
+        last_product_id: maxProductId,
+        last_session_id: maxSessionId,
+        last_full_sync_at: new Date().toISOString()
+      });
       
       accResult.counts = {
         sale_orders: Array.isArray(orders) ? orders.length : 0,
@@ -433,20 +566,58 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(publicDir, 'index.html'));
 });
 
-// Sistema de sincronización automática
+// Sistema de sincronización híbrida
 let autoSyncInterval;
+let pollingInterval;
 let lastAutoSync = null;
+let lastPoll = null;
 
-function startAutoSync() {
-  // Sincronizar inmediatamente al iniciar
-  performAutoSync();
+function startHybridSync() {
+  // Polling frecuente cada 5 minutos para datos nuevos
+  pollingInterval = setInterval(() => {
+    performPolling();
+  }, 5 * 60 * 1000); // 5 minutos
   
-  // Luego cada hora (3600000 ms)
+  // Sync completo cada 6 horas para asegurar consistencia
   autoSyncInterval = setInterval(() => {
     performAutoSync();
-  }, 60 * 60 * 1000);
+  }, 6 * 60 * 60 * 1000); // 6 horas
   
-  console.log('Auto-sync started: every hour for today\'s data');
+  // Polling inmediato al iniciar
+  performPolling();
+  
+  console.log('🔄 Hybrid sync started:');
+  console.log('  - Polling every 5 minutes for new data');
+  console.log('  - Full sync every 6 hours for consistency');
+}
+
+async function performPolling() {
+  try {
+    const accounts = getAccountsFromEnv();
+    if (accounts.length === 0) return;
+    
+    console.log('🔍 Polling for new data...');
+    const results = [];
+    
+    for (const { email, password } of accounts) {
+      const result = await pollNewData(email, password);
+      results.push(result);
+    }
+    
+    const hasNewData = results.some(r => r.hasNewData);
+    const successCount = results.filter(r => r.success).length;
+    
+    lastPoll = new Date();
+    
+    if (hasNewData) {
+      console.log(`✅ Polling completed: ${successCount}/${accounts.length} accounts, new data found`);
+    } else {
+      console.log(`ℹ️ Polling completed: ${successCount}/${accounts.length} accounts, no new data`);
+    }
+    
+  } catch (error) {
+    console.error('❌ Polling failed:', error.message);
+  }
 }
 
 async function performAutoSync() {
@@ -472,8 +643,42 @@ app.get('/sync/status', (req, res) => {
   res.json({
     autoSyncEnabled: !!autoSyncInterval,
     lastAutoSync: lastAutoSync,
-    nextAutoSync: autoSyncInterval ? new Date(Date.now() + 60 * 60 * 1000) : null
+    nextAutoSync: autoSyncInterval ? new Date(Date.now() + 60 * 60 * 1000) : null,
+    pollingEnabled: !!pollingInterval,
+    lastPoll: lastPoll
   });
+});
+
+// Endpoint para polling manual
+app.post('/sync/poll', async (req, res) => {
+  try {
+    const accounts = getAccountsFromEnv();
+    if (accounts.length === 0) {
+      return res.status(400).json({ error: 'No hay cuentas configuradas' });
+    }
+
+    console.log('🔄 Manual polling triggered');
+    const results = [];
+    
+    for (const { email, password } of accounts) {
+      const result = await pollNewData(email, password);
+      results.push(result);
+    }
+    
+    const hasNewData = results.some(r => r.hasNewData);
+    const successCount = results.filter(r => r.success).length;
+    
+    res.json({
+      ok: true,
+      hasNewData,
+      successCount,
+      totalAccounts: accounts.length,
+      results
+    });
+  } catch (error) {
+    console.error('Polling error:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.listen(PORT, '0.0.0.0', () => {
@@ -487,9 +692,9 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log('Error reading public dir:', e.message);
   }
   
-  // Iniciar auto-sync después de que el servidor esté listo
+  // Iniciar sistema híbrido después de que el servidor esté listo
   setTimeout(() => {
-    startAutoSync();
+    startHybridSync();
   }, 5000); // 5 segundos de delay para asegurar que todo esté inicializado
 });
 

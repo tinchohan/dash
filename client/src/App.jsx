@@ -77,7 +77,7 @@ function Login({ onLogged }) {
   )
 }
 
-function Filters({ fromDate, toDate, setFromDate, setToDate, storeIds, setStoreIds, onSync, stores }) {
+function Filters({ fromDate, toDate, setFromDate, setToDate, storeIds, setStoreIds, onSync, onPoll, stores }) {
   const selected = (storeIds || '').split(',').filter(Boolean)
   const toggle = (id) => {
     const set = new Set(selected)
@@ -100,6 +100,7 @@ function Filters({ fromDate, toDate, setFromDate, setToDate, storeIds, setStoreI
           <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
         </div>
         <button onClick={onSync}>Sincronizar API</button>
+        <button onClick={onPoll} className="btn btn-outline-primary">Polling Manual</button>
       </div>
       <div style={{ background: '#fff', padding: 12, borderRadius: 8, boxShadow: '0 1px 4px rgba(0,0,0,.06)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -204,6 +205,20 @@ export function App() {
     await loadAll()
   }
 
+  const onPoll = async () => {
+    try {
+      const result = await api('/sync/poll', { method: 'POST' })
+      if (result.hasNewData) {
+        await loadAll() // Recargar datos si hay información nueva
+        console.log('✅ New data found and loaded')
+      } else {
+        console.log('ℹ️ No new data found')
+      }
+    } catch (error) {
+      console.error('Polling error:', error)
+    }
+  }
+
   const onLogout = async () => {
     try { await api('/auth/logout', { method: 'POST' }) } catch {}
     setLogged(false)
@@ -225,14 +240,21 @@ export function App() {
           <div className="d-flex align-items-center gap-2">
             {autoSyncStatus && (
               <div className="d-flex align-items-center me-2">
-                <div className={`badge ${autoSyncStatus.autoSyncEnabled ? 'bg-success' : 'bg-secondary'} me-1`}>
-                  {autoSyncStatus.autoSyncEnabled ? '🔄 Auto' : '⏸️ Manual'}
+                <div className={`badge ${autoSyncStatus.pollingEnabled ? 'bg-success' : 'bg-secondary'} me-1`}>
+                  {autoSyncStatus.pollingEnabled ? '🔄 Híbrido' : '⏸️ Manual'}
                 </div>
-                {autoSyncStatus.lastAutoSync && (
-                  <small className="text-muted">
-                    Última: {new Date(autoSyncStatus.lastAutoSync).toLocaleTimeString()}
-                  </small>
-                )}
+                <div className="d-flex flex-column">
+                  {autoSyncStatus.lastPoll && (
+                    <small className="text-muted" style={{ fontSize: '0.7rem' }}>
+                      Poll: {new Date(autoSyncStatus.lastPoll).toLocaleTimeString()}
+                    </small>
+                  )}
+                  {autoSyncStatus.lastAutoSync && (
+                    <small className="text-muted" style={{ fontSize: '0.7rem' }}>
+                      Sync: {new Date(autoSyncStatus.lastAutoSync).toLocaleTimeString()}
+                    </small>
+                  )}
+                </div>
               </div>
             )}
             <div className="form-check form-switch me-2">
@@ -243,7 +265,7 @@ export function App() {
           </div>
         </div>
       </nav>
-      <Filters {...{ fromDate, toDate, setFromDate, setToDate, storeIds, setStoreIds, onSync, stores }} />
+      <Filters {...{ fromDate, toDate, setFromDate, setToDate, storeIds, setStoreIds, onSync, onPoll, stores }} />
       {overview && (
         <div className="row g-3 my-1">
           <div className="col-12 col-sm-6 col-lg-4">
