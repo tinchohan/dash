@@ -24,6 +24,17 @@ const storeNames = {
   10020: 'Seitu Juramento',
 }
 
+// Función para generar colores únicos basados en el mes
+function getMonthColor(dayString) {
+  const date = new Date(dayString)
+  const month = date.getMonth()
+  const colors = [
+    '#8884d8', '#82ca9d', '#ffc658', '#8dd1e1', '#a4de6c', '#d0ed57', '#ffc0cb',
+    '#ff7c7c', '#87ceeb', '#dda0dd', '#98fb98', '#f0e68c', '#ffb6c1'
+  ]
+  return colors[month % colors.length]
+}
+
 async function api(path, opts = {}) {
   const res = await fetch(API + path, {
     credentials: 'include',
@@ -288,7 +299,11 @@ export function App() {
                     <YAxis />
                     <Tooltip />
                     <Legend />
-                    <Bar dataKey="total" name="Total" fill="#8884d8" />
+                    <Bar dataKey="total" name="Total">
+                      {daily.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={getMonthColor(entry.day)} />
+                      ))}
+                    </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
