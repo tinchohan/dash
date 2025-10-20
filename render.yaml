@@ -4,7 +4,7 @@ services:
     env: node
     plan: free
     buildCommand: npm install && npm run build
-    startCommand: node server/simple.js
+    startCommand: node server/hybrid.js
     envVars:
       - key: NODE_ENV
         value: production
