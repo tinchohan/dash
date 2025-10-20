@@ -1,0 +1,15 @@
+node_modules/
+*.log
+client/dist/
+server/public/*
+!server/public/.gitkeep
+server/.env
+server/.env.local
+server/data.db
+server/data.db-*
+*.sqlite
+*.sqlite-journal
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

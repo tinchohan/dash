@@ -1,0 +1,10 @@
+[build]
+buildCommand = "npm --prefix client ci || npm --prefix client install && npm --prefix client run build && npm --prefix server ci || npm --prefix server install && npm --prefix server run build:client"
+
+[deploy]
+startCommand = "node server/index.js"
+healthcheckPath = "/"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+
+
