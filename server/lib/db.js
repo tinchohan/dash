@@ -16,9 +16,16 @@ export function getDb() {
 
 export function initDatabase() {
   const dbPath = process.env.SQLITE_PATH || path.join(__dirname, '..', 'data.db');
-  db = new Database(dbPath);
-  db.pragma('journal_mode = WAL');
-  migrate(db);
+  console.log('Initializing database at:', dbPath);
+  try {
+    db = new Database(dbPath);
+    db.pragma('journal_mode = WAL');
+    migrate(db);
+    console.log('Database initialized successfully');
+  } catch (error) {
+    console.error('Database initialization failed:', error);
+    throw error;
+  }
 }
 
 function migrate(dbInstance) {

@@ -14,6 +14,13 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+console.log('Environment check:', {
+  PORT,
+  SQLITE_PATH: process.env.SQLITE_PATH,
+  NODE_ENV: process.env.NODE_ENV,
+  hasAccounts: process.env.LINISCO_EMAIL_1 ? 'yes' : 'no'
+});
 // Healthcheck endpoint
 app.get('/healthz', (_req, res) => res.json({ ok: true }));
 
@@ -51,6 +58,8 @@ app.get('*', (_req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Server listening on :${PORT}`);
+  console.log('Healthcheck available at /healthz');
+  console.log('Static files served from:', path.join(__dirname, 'public'));
 });
 
 
