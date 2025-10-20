@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 import fetch from 'node-fetch';
 import dayjs from 'dayjs';
+import Database from 'better-sqlite3';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,6 +19,68 @@ console.log('Environment check:', {
   NODE_ENV: process.env.NODE_ENV,
   hasAccounts: process.env.LINISCO_EMAIL_1 ? 'yes' : 'no'
 });
+
+// Database setup
+let db;
+function initDatabase() {
+  const dbPath = process.env.SQLITE_PATH || path.join(__dirname, 'data.db');
+  console.log('Initializing database at:', dbPath);
+  
+  try {
+    // Ensure directory exists
+    const dbDir = path.dirname(dbPath);
+    if (!fs.existsSync(dbDir)) {
+      console.log('Creating directory:', dbDir);
+      fs.mkdirSync(dbDir, { recursive: true });
+    }
+    
+    db = new Database(dbPath);
+    db.pragma('journal_mode = WAL');
+    migrate(db);
+    console.log('Database initialized successfully');
+  } catch (error) {
+    console.error('Database initialization failed:', error);
+    throw error;
+  }
+}
+
+function migrate(dbInstance) {
+  dbInstance.exec(`
+    CREATE TABLE IF NOT EXISTS sale_orders (
+      id INTEGER PRIMARY KEY,
+      store_id INTEGER,
+      account_email TEXT,
+      created_at TEXT,
+      total_amount REAL,
+      payment_method TEXT,
+      raw JSON
+    );
+    CREATE TABLE IF NOT EXISTS sale_products (
+      id INTEGER PRIMARY KEY,
+      order_id INTEGER,
+      store_id INTEGER,
+      account_email TEXT,
+      created_at TEXT,
+      product_name TEXT,
+      quantity REAL,
+      total_amount REAL,
+      raw JSON
+    );
+    CREATE TABLE IF NOT EXISTS psessions (
+      id INTEGER PRIMARY KEY,
+      store_id INTEGER,
+      account_email TEXT,
+      created_at TEXT,
+      raw JSON
+    );
+    CREATE INDEX IF NOT EXISTS idx_orders_date ON sale_orders(created_at);
+    CREATE INDEX IF NOT EXISTS idx_products_date ON sale_products(created_at);
+    CREATE INDEX IF NOT EXISTS idx_sessions_date ON psessions(created_at);
+  `);
+}
+
+// Initialize database
+initDatabase();
 
 // Healthcheck endpoint
 app.get('/healthz', (_req, res) => {
@@ -117,6 +180,78 @@ function parseDateStr(str) {
   return d.isValid() ? d.format('DD/MM/YYYY') : dayjs().format('DD/MM/YYYY');
 }
 
+// Database insert functions
+function insertOrders(db, rows, email) {
+  const insert = db.prepare(`
+    INSERT OR REPLACE INTO sale_orders (id, store_id, account_email, created_at, total_amount, payment_method, raw)
+    VALUES (@id, @store_id, @account_email, @created_at, @total_amount, @payment_method, @raw)
+  `);
+  const tx = db.transaction((items) => {
+    for (const r of items) {
+      insert.run({
+        id: r.idSaleOrder || r.id,
+        store_id: r.store_id || r.storeId || r.shopNumber || null,
+        account_email: email,
+        created_at: r.created_at || r.createdAt || r.orderDate || r.date || null,
+        total_amount: r.total_amount || r.total || r.amount || 0,
+        payment_method: r.payment_method || r.paymentMethod || r.paymentmethod || null,
+        raw: JSON.stringify(r)
+      });
+    }
+  });
+  tx(rows || []);
+}
+
+function insertProducts(db, rows, email) {
+  const insert = db.prepare(`
+    INSERT OR REPLACE INTO sale_products (id, order_id, store_id, account_email, created_at, product_name, quantity, total_amount, raw)
+    VALUES (@id, @order_id, @store_id, @account_email, @created_at, @product_name, @quantity, @total_amount, @raw)
+  `);
+  const tx = db.transaction((items) => {
+    for (const r of items) {
+      insert.run({
+        id: r.idSaleProduct || r.id,
+        order_id: r.order_id || r.orderId || r.idSaleOrder || null,
+        store_id: r.store_id || r.storeId || r.shopNumber || null,
+        account_email: email,
+        created_at: r.created_at || r.createdAt || r.date || null,
+        product_name: r.product_name || r.name || r.product || null,
+        quantity: r.quantity || r.qty || 0,
+        total_amount: r.total_amount || r.total || r.amount || ((r.salePrice || 0) * (r.quantity || 1)),
+        raw: JSON.stringify(r)
+      });
+    }
+  });
+  tx(rows || []);
+  // Backfill created_at from sale_orders when missing
+  db.prepare(`
+    UPDATE sale_products
+    SET created_at = (
+      SELECT created_at FROM sale_orders o WHERE o.id = sale_products.order_id
+    )
+    WHERE account_email = @email AND created_at IS NULL AND order_id IS NOT NULL
+  `).run({ email });
+}
+
+function insertSessions(db, rows, email) {
+  const insert = db.prepare(`
+    INSERT OR REPLACE INTO psessions (id, store_id, account_email, created_at, raw)
+    VALUES (@id, @store_id, @account_email, @created_at, @raw)
+  `);
+  const tx = db.transaction((items) => {
+    for (const r of items) {
+      insert.run({
+        id: r.idSession || r.id,
+        store_id: r.store_id || r.storeId || r.shopNumber || null,
+        account_email: email,
+        created_at: r.created_at || r.createdAt || r.checkin || r.date || null,
+        raw: JSON.stringify(r)
+      });
+    }
+  });
+  tx(rows || []);
+}
+
 app.post('/sync', async (req, res) => {
   try {
     console.log('Sync called with:', req.body);
@@ -144,6 +279,11 @@ app.post('/sync', async (req, res) => {
           fetchEndpoint('/sale_products', email, token, from, to),
           fetchEndpoint('/psessions', email, token, from, to)
         ]);
+        
+        // Save to database
+        insertOrders(db, orders, email);
+        insertProducts(db, products, email);
+        insertSessions(db, sessions, email);
         
         accResult.counts = {
           sale_orders: Array.isArray(orders) ? orders.length : 0,
@@ -183,29 +323,73 @@ app.post('/sync', async (req, res) => {
   }
 });
 
+// Real stats endpoints with database
+function whereAndParams({ fromDate, toDate, storeIds }) {
+  const where = [];
+  const params = {};
+  if (fromDate) {
+    where.push('date(created_at) >= date(@fromDate)');
+    params.fromDate = dayjs(fromDate).format('YYYY-MM-DD');
+  }
+  if (toDate) {
+    where.push('date(created_at) <= date(@toDate)');
+    params.toDate = dayjs(toDate).format('YYYY-MM-DD');
+  }
+  if (storeIds?.length) {
+    const ids = storeIds.split(',').map((x) => x.trim()).filter(Boolean);
+    where.push(`store_id IN (${ids.map((_, i) => `@s${i}`).join(',')})`);
+    ids.forEach((v, i) => (params[`s${i}`] = Number(v)));
+  }
+  const sql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  return { sql, params };
+}
+
 app.get('/stats/overview', (req, res) => {
   console.log('Stats overview called');
+  const { sql, params } = whereAndParams(req.query);
+  const totalOrders = db.prepare(`SELECT COUNT(*) as c, SUM(total_amount) as total FROM sale_orders ${sql}`).get(params);
+  const byPayment = db.prepare(`SELECT payment_method as method, COUNT(*) as c, IFNULL(SUM(total_amount),0) as total FROM sale_orders ${sql} GROUP BY payment_method`).all(params);
+
+  // Group payment methods
+  const groups = {
+    Efectivo: new Set(['cash', 'cc_pedidosyaft']),
+    Apps: new Set(['cc_rappiol', 'cc_pedidosyaol']),
+  };
+  const grouped = { Efectivo: { group: 'Efectivo', count: 0, total: 0 }, Apps: { group: 'Apps', count: 0, total: 0 }, Otros: { group: 'Otros', count: 0, total: 0 } };
+  for (const row of byPayment) {
+    const method = String(row.method || 'unknown').toLowerCase().trim();
+    const target = groups.Efectivo.has(method) ? 'Efectivo' : groups.Apps.has(method) ? 'Apps' : 'Otros';
+    grouped[target].count += Number(row.c || 0);
+    grouped[target].total += Number(row.total || 0);
+  }
+
   res.json({
-    totalOrders: 0,
-    totalAmount: 0,
-    paymentMethods: [],
-    paymentGroups: []
+    totalOrders: totalOrders.c || 0,
+    totalAmount: totalOrders.total || 0,
+    paymentMethods: byPayment,
+    paymentGroups: [grouped.Efectivo, grouped.Apps, grouped.Otros]
   });
 });
 
 app.get('/stats/by-store', (req, res) => {
   console.log('Stats by-store called');
-  res.json({ stores: [] });
+  const { sql, params } = whereAndParams(req.query);
+  const rows = db.prepare(`SELECT store_id, COUNT(*) as c, IFNULL(SUM(total_amount),0) as total FROM sale_orders ${sql} GROUP BY store_id`).all(params);
+  res.json({ stores: rows });
 });
 
 app.get('/stats/daily', (req, res) => {
   console.log('Stats daily called');
-  res.json({ days: [] });
+  const { sql, params } = whereAndParams(req.query);
+  const rows = db.prepare(`SELECT date(created_at) as day, COUNT(*) as c, IFNULL(SUM(total_amount),0) as total FROM sale_orders ${sql} GROUP BY date(created_at) ORDER BY day`).all(params);
+  res.json({ days: rows });
 });
 
 app.get('/stats/top-products', (req, res) => {
   console.log('Stats top-products called');
-  res.json({ products: [] });
+  const { sql, params } = whereAndParams(req.query);
+  const rows = db.prepare(`SELECT product_name as name, IFNULL(SUM(total_amount),0) as total, IFNULL(SUM(quantity),0) as qty FROM sale_products ${sql} GROUP BY product_name ORDER BY total DESC LIMIT 20`).all(params);
+  res.json({ products: rows });
 });
 
 app.get('/stats/stores', (req, res) => {
