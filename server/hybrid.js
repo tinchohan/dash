@@ -188,12 +188,20 @@ function insertOrders(db, rows, email) {
   `);
   const tx = db.transaction((items) => {
     for (const r of items) {
+      const totalAmount = r.total_amount || r.total || r.amount || 0;
+      
+      // Filtrar órdenes con total negativo (devoluciones, cancelaciones, etc.)
+      if (totalAmount < 0) {
+        console.log(`Skipping order ${r.idSaleOrder || r.id} with negative total: ${totalAmount}`);
+        continue;
+      }
+      
       insert.run({
         id: r.idSaleOrder || r.id,
         store_id: r.store_id || r.storeId || r.shopNumber || null,
         account_email: email,
         created_at: r.created_at || r.createdAt || r.orderDate || r.date || null,
-        total_amount: r.total_amount || r.total || r.amount || 0,
+        total_amount: totalAmount,
         payment_method: r.payment_method || r.paymentMethod || r.paymentmethod || null,
         raw: JSON.stringify(r)
       });
@@ -209,6 +217,14 @@ function insertProducts(db, rows, email) {
   `);
   const tx = db.transaction((items) => {
     for (const r of items) {
+      const totalAmount = r.total_amount || r.total || r.amount || ((r.salePrice || 0) * (r.quantity || 1));
+      
+      // Filtrar productos con total negativo (devoluciones, cancelaciones, etc.)
+      if (totalAmount < 0) {
+        console.log(`Skipping product ${r.idSaleProduct || r.id} with negative total: ${totalAmount}`);
+        continue;
+      }
+      
       insert.run({
         id: r.idSaleProduct || r.id,
         order_id: r.order_id || r.orderId || r.idSaleOrder || null,
@@ -217,7 +233,7 @@ function insertProducts(db, rows, email) {
         created_at: r.created_at || r.createdAt || r.date || null,
         product_name: r.product_name || r.name || r.product || null,
         quantity: r.quantity || r.qty || 0,
-        total_amount: r.total_amount || r.total || r.amount || ((r.salePrice || 0) * (r.quantity || 1)),
+        total_amount: totalAmount,
         raw: JSON.stringify(r)
       });
     }
