@@ -36,8 +36,8 @@ async function api(path, opts = {}) {
 }
 
 function Login({ onLogged }) {
-  const [user, setUser] = useState('H4')
-  const [pass, setPass] = useState('SRL')
+  const [user, setUser] = useState('')
+  const [pass, setPass] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
