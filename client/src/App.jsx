@@ -121,8 +121,12 @@ function Filters({ fromDate, toDate, setFromDate, setToDate, storeIds, setStoreI
           <label>Hasta</label>
           <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
         </div>
-        <button onClick={onSync}>Sincronizar API</button>
-        <button onClick={onPoll} className="btn btn-outline-primary">Polling Manual</button>
+        <button onClick={onSync} className="btn btn-primary" title="Sincronizar datos completos para el rango de fechas seleccionado">
+          Sync Manual
+        </button>
+        <button onClick={onPoll} className="btn btn-outline-primary" title="Buscar solo datos nuevos (más rápido)">
+          Polling Manual
+        </button>
       </div>
       <div style={{ background: '#fff', padding: 12, borderRadius: 8, boxShadow: '0 1px 4px rgba(0,0,0,.06)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -239,12 +243,17 @@ export function App() {
   }, [logged])
 
   const onSync = async () => {
+    // Sync completo para el rango de fechas seleccionado
+    console.log('🔄 Manual sync for date range:', { fromDate, toDate })
     await api('/sync', { method: 'POST', body: JSON.stringify({ fromDate, toDate }) })
     await loadAll()
+    console.log('✅ Manual sync completed')
   }
 
   const onPoll = async () => {
     try {
+      // Polling manual para buscar solo datos nuevos
+      console.log('🔍 Manual polling for new data...')
       const result = await api('/sync/poll', { method: 'POST' })
       if (result.hasNewData) {
         await loadAll() // Recargar datos si hay información nueva
