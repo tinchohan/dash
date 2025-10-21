@@ -33,7 +33,7 @@ function formatDateTime(dateString) {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
-    timeZone: 'America/Argentina/Buenos_Aires'
+    timeZone: 'UTC'
   })
 }
 
@@ -157,11 +157,8 @@ function Filters({ fromDate, toDate, setFromDate, setToDate, storeIds, setStoreI
 export function App() {
   const [logged, setLogged] = useState(false)
   const [fromDate, setFromDate] = useState(() => {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const day = String(today.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    // Mostrar datos desde enero 2025 por defecto
+    return '2025-01-01';
   })
   const [toDate, setToDate] = useState(() => {
     const today = new Date();

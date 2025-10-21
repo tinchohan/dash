@@ -169,4 +169,39 @@ statsRouter.get('/debug/recent', requireAuth, (req, res) => {
   res.json({ limit, sale_orders: recentOrders, sale_products: recentProducts });
 });
 
+// Debug: estadísticas de la base de datos
+statsRouter.get('/debug/stats', requireAuth, (req, res) => {
+  const db = getDb();
+  try {
+    const orderCount = db.prepare(`SELECT COUNT(*) as count FROM sale_orders`).get();
+    const productCount = db.prepare(`SELECT COUNT(*) as count FROM sale_products`).get();
+    const sessionCount = db.prepare(`SELECT COUNT(*) as count FROM psessions`).get();
+    
+    const oldestOrder = db.prepare(`SELECT created_at FROM sale_orders ORDER BY datetime(created_at) ASC LIMIT 1`).get();
+    const newestOrder = db.prepare(`SELECT created_at FROM sale_orders ORDER BY datetime(created_at) DESC LIMIT 1`).get();
+    
+    const storeStats = db.prepare(`
+      SELECT store_id, COUNT(*) as count 
+      FROM sale_orders 
+      GROUP BY store_id 
+      ORDER BY count DESC
+    `).all();
+    
+    res.json({
+      counts: {
+        orders: orderCount.count,
+        products: productCount.count,
+        sessions: sessionCount.count
+      },
+      dateRange: {
+        oldest: oldestOrder?.created_at,
+        newest: newestOrder?.created_at
+      },
+      storeStats
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 
