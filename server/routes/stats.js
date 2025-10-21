@@ -81,6 +81,14 @@ statsRouter.get('/top-products', requireAuth, (req, res) => {
 statsRouter.get('/stores', requireAuth, (_req, res) => {
   const db = getDb();
   const rows = db.prepare('SELECT DISTINCT store_id FROM sale_orders WHERE store_id IS NOT NULL ORDER BY store_id').all();
+  
+  // Si no hay datos en la base de datos, usar tiendas hardcodeadas como respaldo
+  if (rows.length === 0) {
+    console.log('No stores found in database, using hardcoded stores');
+    res.json({ stores: ['63953', '66220', '72267', '30036', '30038', '10019', '10020'] });
+    return;
+  }
+  
   res.json({ stores: rows.map(r => r.store_id) });
 });
 

@@ -451,11 +451,19 @@ async function performLocalValidation() {
       lastOrder: stats.lastOrder
     });
     
-    // Si hay problemas, podríamos hacer un polling específico
-    // pero por ahora solo validamos
+    // Retornar las estadísticas para el endpoint
+    return {
+      orders: stats.totalOrders,
+      products: stats.totalProducts,
+      sessions: stats.totalSessions,
+      accounts: stats.accounts,
+      lastOrder: stats.lastOrder,
+      timestamp: lastAutoSync
+    };
     
   } catch (error) {
     console.error('❌ Local validation failed:', error.message);
+    throw error;
   }
 }
 
