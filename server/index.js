@@ -59,7 +59,13 @@ app.use('/stats', statsRouter);
 
 const publicDir = path.join(__dirname, 'public');
 app.use(express.static(publicDir));
-app.get('*', (_req, res) => {
+
+// Catch-all handler: send back React's index.html file for any non-API routes
+app.get('*', (req, res) => {
+  // Only serve index.html for GET requests that don't start with API paths
+  if (req.path.startsWith('/auth') || req.path.startsWith('/sync') || req.path.startsWith('/stats')) {
+    return res.status(404).json({ error: 'API endpoint not found' });
+  }
   res.sendFile(path.join(publicDir, 'index.html'));
 });
 
