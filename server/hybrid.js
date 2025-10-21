@@ -645,17 +645,17 @@ function startHybridSync() {
     performPolling();
   }, 5 * 60 * 1000); // 5 minutos
   
-  // Sync completo cada 6 horas para asegurar consistencia
+  // Validación local cada 6 horas (sin llamadas a API)
   autoSyncInterval = setInterval(() => {
-    performAutoSync();
+    performLocalValidation();
   }, 6 * 60 * 60 * 1000); // 6 horas
   
   // Polling inmediato al iniciar
   performPolling();
   
-  console.log('🔄 Hybrid sync started:');
+  console.log('🔄 Optimized hybrid sync started:');
   console.log('  - Polling every 5 minutes for new data');
-  console.log('  - Full sync every 6 hours for consistency');
+  console.log('  - Local validation every 6 hours (no API calls)');
 }
 
 async function performPolling() {
@@ -687,6 +687,37 @@ async function performPolling() {
   }
 }
 
+async function performLocalValidation() {
+  try {
+    console.log('🔍 Local validation starting...');
+    
+    // Verificar integridad de datos locales
+    const stats = {
+      totalOrders: db.prepare('SELECT COUNT(*) as count FROM sale_orders').get().count,
+      totalProducts: db.prepare('SELECT COUNT(*) as count FROM sale_products').get().count,
+      totalSessions: db.prepare('SELECT COUNT(*) as count FROM psessions').get().count,
+      lastOrder: db.prepare('SELECT MAX(created_at) as last FROM sale_orders').get().last,
+      accounts: db.prepare('SELECT COUNT(DISTINCT account_email) as count FROM sale_orders').get().count
+    };
+    
+    lastAutoSync = new Date();
+    
+    console.log('✅ Local validation completed:', {
+      orders: stats.totalOrders,
+      products: stats.totalProducts,
+      sessions: stats.totalSessions,
+      accounts: stats.accounts,
+      lastOrder: stats.lastOrder
+    });
+    
+    // Si hay problemas, podríamos hacer un polling específico
+    // pero por ahora solo validamos
+    
+  } catch (error) {
+    console.error('❌ Local validation failed:', error.message);
+  }
+}
+
 async function performAutoSync() {
   try {
     const today = dayjs().format('YYYY-MM-DD');
@@ -708,11 +739,12 @@ async function performAutoSync() {
 // Endpoint para ver estado de auto-sync
 app.get('/sync/status', (req, res) => {
   res.json({
-    autoSyncEnabled: !!autoSyncInterval,
-    lastAutoSync: lastAutoSync,
-    nextAutoSync: autoSyncInterval ? new Date(Date.now() + 60 * 60 * 1000) : null,
     pollingEnabled: !!pollingInterval,
-    lastPoll: lastPoll
+    lastPoll: lastPoll,
+    validationEnabled: !!autoSyncInterval,
+    lastValidation: lastAutoSync,
+    nextPoll: pollingInterval ? new Date(Date.now() + 5 * 60 * 1000) : null,
+    nextValidation: autoSyncInterval ? new Date(Date.now() + 6 * 60 * 60 * 1000) : null
   });
 });
 

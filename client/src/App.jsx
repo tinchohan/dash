@@ -287,9 +287,9 @@ export function App() {
                       Poll: {formatTime(autoSyncStatus.lastPoll)}
                     </small>
                   )}
-                  {autoSyncStatus.lastAutoSync && (
+                  {autoSyncStatus.lastValidation && (
                     <small className="text-muted" style={{ fontSize: '0.7rem' }}>
-                      Sync: {formatTime(autoSyncStatus.lastAutoSync)}
+                      Valid: {formatTime(autoSyncStatus.lastValidation)}
                     </small>
                   )}
                 </div>
