@@ -24,6 +24,26 @@ const storeNames = {
   10020: 'Seitu Juramento',
 }
 
+// Función helper para formatear fechas
+function formatDateTime(dateString) {
+  return new Date(dateString).toLocaleString('es-AR', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  })
+}
+
+function formatTime(dateString) {
+  return new Date(dateString).toLocaleTimeString('es-AR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  })
+}
+
 // Función para generar colores únicos basados en el mes
 function getMonthColor(dayString) {
   const date = new Date(dayString)
@@ -262,12 +282,12 @@ export function App() {
                 <div className="d-flex flex-column">
                   {autoSyncStatus.lastPoll && (
                     <small className="text-muted" style={{ fontSize: '0.7rem' }}>
-                      Poll: {new Date(autoSyncStatus.lastPoll).toLocaleTimeString()}
+                      Poll: {formatTime(autoSyncStatus.lastPoll)}
                     </small>
                   )}
                   {autoSyncStatus.lastAutoSync && (
                     <small className="text-muted" style={{ fontSize: '0.7rem' }}>
-                      Sync: {new Date(autoSyncStatus.lastAutoSync).toLocaleTimeString()}
+                      Sync: {formatTime(autoSyncStatus.lastAutoSync)}
                     </small>
                   )}
                 </div>
@@ -331,7 +351,7 @@ export function App() {
                               {storeNames[sale.store_id] || `Tienda ${sale.store_id}`}
                             </h6>
                             <small className="text-muted">
-                              {new Date(sale.created_at).toLocaleTimeString()}
+                              {formatDateTime(sale.created_at)}
                             </small>
                           </div>
                           <div className="mb-2">
