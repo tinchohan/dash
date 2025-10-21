@@ -31,6 +31,20 @@ app.get('/ping', (_req, res) => {
   res.json({ pong: true, time: Date.now() });
 });
 
+// Detailed status endpoint
+app.get('/status', (_req, res) => {
+  res.json({
+    server: 'running',
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    timestamp: new Date().toISOString(),
+    environment: {
+      NODE_ENV: process.env.NODE_ENV,
+      PORT: process.env.PORT
+    }
+  });
+});
+
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 // Disable caching on API endpoints to avoid 304 issues during dev
@@ -51,7 +65,13 @@ app.use(
   })
 );
 
-initDatabase();
+// Initialize database with error handling
+try {
+  initDatabase();
+} catch (error) {
+  console.error('❌ Database initialization failed:', error.message);
+  console.log('⚠️ Server will continue but database operations may fail');
+}
 
 app.use('/auth', authRouter);
 app.use('/sync', syncRouter);
@@ -77,7 +97,13 @@ app.listen(PORT, '0.0.0.0', () => {
   
   // Iniciar sistema híbrido después de que el servidor esté listo
   setTimeout(() => {
-    startHybridSync();
+    try {
+      console.log('🔄 Starting hybrid sync system...');
+      startHybridSync();
+    } catch (error) {
+      console.error('❌ Failed to start hybrid sync system:', error.message);
+      console.log('⚠️ Server will continue without hybrid sync');
+    }
   }, 5000); // 5 segundos de delay para asegurar que todo esté inicializado
 });
 
