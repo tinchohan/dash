@@ -34,7 +34,7 @@ COPY --from=builder /app/server /app/server
 # If you need to prune devDeps later, consider `npm prune --omit=dev` but ensure no rebuilds occur.
 
 EXPOSE 3000
-# Use hybrid server with auth but no database
-CMD ["node", "server/hybrid.js"]
+# Use modular server with hybrid sync system
+CMD ["node", "server/index.js"]
 
 
