@@ -204,4 +204,50 @@ statsRouter.get('/debug/stats', requireAuth, (req, res) => {
   }
 });
 
+// Verificar disponibilidad de fechas en la base de datos
+statsRouter.get('/date-coverage', requireAuth, (req, res) => {
+  const db = getDb();
+  try {
+    const { fromDate, toDate } = req.query;
+    
+    if (!fromDate || !toDate) {
+      return res.status(400).json({ error: 'fromDate and toDate are required' });
+    }
+    
+    // Verificar si hay datos en el rango especificado
+    const orderCount = db.prepare(`
+      SELECT COUNT(*) as count 
+      FROM sale_orders 
+      WHERE date(created_at) >= date(@fromDate) AND date(created_at) <= date(@toDate)
+    `).get({ fromDate, toDate });
+    
+    const productCount = db.prepare(`
+      SELECT COUNT(*) as count 
+      FROM sale_products 
+      WHERE date(created_at) >= date(@fromDate) AND date(created_at) <= date(@toDate)
+    `).get({ fromDate, toDate });
+    
+    // Obtener fechas disponibles en el rango
+    const availableDates = db.prepare(`
+      SELECT DISTINCT date(created_at) as date, COUNT(*) as count
+      FROM sale_orders 
+      WHERE date(created_at) >= date(@fromDate) AND date(created_at) <= date(@toDate)
+      GROUP BY date(created_at)
+      ORDER BY date(created_at)
+    `).all({ fromDate, toDate });
+    
+    res.json({
+      hasData: orderCount.count > 0,
+      counts: {
+        orders: orderCount.count,
+        products: productCount.count
+      },
+      availableDates,
+      requestedRange: { fromDate, toDate }
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 

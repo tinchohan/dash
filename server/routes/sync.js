@@ -373,6 +373,40 @@ syncRouter.post('/', requireAuth, async (req, res) => {
   }
 });
 
+// Endpoint para sincronización histórica específica
+syncRouter.post('/historical', requireAuth, async (req, res) => {
+  try {
+    const { fromDate, toDate, force = false } = req.body;
+    
+    if (!fromDate || !toDate) {
+      return res.status(400).json({ error: 'fromDate and toDate are required' });
+    }
+    
+    console.log(`🔄 Historical sync requested: ${fromDate} to ${toDate}`);
+    const result = await performSync(fromDate, toDate, false);
+    
+    const failed = result.results.filter(r => !r.ok);
+    if (failed.length) {
+      return res.status(207).json({ 
+        ok: false, 
+        partial: true, 
+        ...result,
+        message: `Historical sync completed with some failures from ${fromDate} to ${toDate}`
+      });
+    }
+    
+    res.json({ 
+      success: true, 
+      ...result,
+      message: `Historical data synced from ${fromDate} to ${toDate}`,
+      force
+    });
+  } catch (error) {
+    console.error('Historical sync error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Sistema de sincronización híbrida
 let autoSyncInterval;
 let pollingInterval;
