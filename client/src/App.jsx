@@ -32,7 +32,8 @@ function formatDateTime(dateString) {
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
-    hour12: false
+    hour12: false,
+    timeZone: 'America/Argentina/Buenos_Aires'
   })
 }
 
@@ -40,7 +41,8 @@ function formatTime(dateString) {
   return new Date(dateString).toLocaleTimeString('es-AR', {
     hour: '2-digit',
     minute: '2-digit',
-    hour12: false
+    hour12: false,
+    timeZone: 'America/Argentina/Buenos_Aires'
   })
 }
 
