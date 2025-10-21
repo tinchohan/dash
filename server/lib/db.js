@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,9 +17,19 @@ export function getDb() {
 
 export function initDatabase() {
   const dbPath = process.env.SQLITE_PATH || path.join(__dirname, '..', 'data.db');
+  
+  // Ensure directory exists
+  const dbDir = path.dirname(dbPath);
+  if (!fs.existsSync(dbDir)) {
+    console.log('Creating database directory:', dbDir);
+    fs.mkdirSync(dbDir, { recursive: true });
+  }
+  
+  console.log('Initializing database at:', dbPath);
   db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
   migrate(db);
+  console.log('Database initialized successfully');
 }
 
 function migrate(dbInstance) {
@@ -62,6 +73,15 @@ function migrate(dbInstance) {
       account_email TEXT,
       created_at TEXT,
       raw JSON
+    );
+
+    CREATE TABLE IF NOT EXISTS sync_state (
+      account_email TEXT PRIMARY KEY,
+      last_order_id INTEGER DEFAULT 0,
+      last_product_id INTEGER DEFAULT 0,
+      last_session_id INTEGER DEFAULT 0,
+      last_poll_at TEXT,
+      last_full_sync_at TEXT
     );
 
     CREATE INDEX IF NOT EXISTS idx_orders_date ON sale_orders(created_at);
