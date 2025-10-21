@@ -559,20 +559,12 @@ app.get('/stats/stores', (req, res) => {
 
 app.get('/stats/recent-sales', (req, res) => {
   console.log('Stats recent sales called');
-  const { fromDate, toDate, storeIds } = req.query;
+  const { storeIds } = req.query;
   
-  // Construir WHERE clause manualmente para el JOIN
+  // Construir WHERE clause solo para tiendas (no fechas para mostrar las más recientes)
   const where = [];
   const params = {};
   
-  if (fromDate) {
-    where.push('o.created_at >= @fromDate');
-    params.fromDate = fromDate;
-  }
-  if (toDate) {
-    where.push('o.created_at <= @toDate');
-    params.toDate = toDate + ' 23:59:59';
-  }
   if (storeIds) {
     const ids = storeIds.split(',').filter(Boolean);
     if (ids.length > 0) {
@@ -584,7 +576,7 @@ app.get('/stats/recent-sales', (req, res) => {
   const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
   
   try {
-    // Obtener las últimas 3 órdenes con sus productos principales
+    // Obtener las últimas órdenes (sin filtro de fecha para mostrar las más recientes)
     const recentOrders = db.prepare(`
       SELECT 
         o.id,
@@ -599,7 +591,7 @@ app.get('/stats/recent-sales', (req, res) => {
       LEFT JOIN sale_products p ON o.id = p.order_id
       ${whereClause}
       ORDER BY o.created_at DESC, p.total_amount DESC
-      LIMIT 10
+      LIMIT 15
     `).all(params);
     
     // Agrupar por orden y tomar el producto principal (mayor monto)

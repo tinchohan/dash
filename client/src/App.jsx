@@ -133,8 +133,20 @@ function Filters({ fromDate, toDate, setFromDate, setToDate, storeIds, setStoreI
 
 export function App() {
   const [logged, setLogged] = useState(false)
-  const [fromDate, setFromDate] = useState(() => new Date().toISOString().slice(0, 10))
-  const [toDate, setToDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [fromDate, setFromDate] = useState(() => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  })
+  const [toDate, setToDate] = useState(() => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  })
   const [storeIds, setStoreIds] = useState(() => {
     try {
       return localStorage.getItem('storeIds') || ''
@@ -156,12 +168,13 @@ export function App() {
 
   async function loadAll() {
     const qs = new URLSearchParams({ fromDate, toDate, storeIds }).toString()
+    const recentQs = new URLSearchParams({ storeIds }).toString()
     const [ov, bs, dy, tp, rs] = await Promise.all([
       api(`/stats/overview?${qs}`),
       api(`/stats/by-store?${qs}`),
       api(`/stats/daily?${qs}`),
       api(`/stats/top-products?${qs}`),
-      api(`/stats/recent-sales?${qs}`),
+      api(`/stats/recent-sales?${recentQs}`), // Sin filtros de fecha para mostrar las más recientes
     ])
     setOverview(ov)
     setByStore(bs.stores)
