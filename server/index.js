@@ -6,7 +6,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { initDatabase } from './lib/db.js';
 import { authRouter } from './routes/auth.js';
-import { syncRouter } from './routes/sync.js';
+import { syncRouter, startHybridSync } from './routes/sync.js';
 import { statsRouter } from './routes/stats.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -68,6 +68,11 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log('Healthcheck available at /healthz');
   console.log('Ping available at /ping');
   console.log('Static files served from:', path.join(__dirname, 'public'));
+  
+  // Iniciar sistema híbrido después de que el servidor esté listo
+  setTimeout(() => {
+    startHybridSync();
+  }, 5000); // 5 segundos de delay para asegurar que todo esté inicializado
 });
 
 
