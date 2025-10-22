@@ -222,36 +222,68 @@ async function insertSessions(rows, email) {
 }
 
 // Funciones para polling inteligente
-function getSyncState(db, email) {
-  const stmt = db.prepare('SELECT * FROM sync_state WHERE account_email = ?');
-  return stmt.get(email) || {
-    account_email: email,
-    last_order_id: 0,
-    last_product_id: 0,
-    last_session_id: 0,
-    last_poll_at: null,
-    last_full_sync_at: null
-  };
+async function getSyncState(email) {
+  const isPostgres = process.env.DATABASE_URL ? true : false;
+  
+  if (isPostgres) {
+    const result = await dbWrapper.get('SELECT * FROM sync_state WHERE account_email = $1', [email]);
+    return result || {
+      account_email: email,
+      last_order_id: 0,
+      last_product_id: 0,
+      last_session_id: 0,
+      last_poll_at: null,
+      last_full_sync_at: null
+    };
+  } else {
+    const db = getDb();
+    const stmt = db.prepare('SELECT * FROM sync_state WHERE account_email = ?');
+    return stmt.get(email) || {
+      account_email: email,
+      last_order_id: 0,
+      last_product_id: 0,
+      last_session_id: 0,
+      last_poll_at: null,
+      last_full_sync_at: null
+    };
+  }
 }
 
-function updateSyncState(db, email, updates) {
-  const stmt = db.prepare(`
-    INSERT OR REPLACE INTO sync_state 
-    (account_email, last_order_id, last_product_id, last_session_id, last_poll_at, last_full_sync_at)
-    VALUES (@account_email, @last_order_id, @last_product_id, @last_session_id, @last_poll_at, @last_full_sync_at)
-  `);
+async function updateSyncState(email, updates) {
+  const isPostgres = process.env.DATABASE_URL ? true : false;
   
-  const current = getSyncState(db, email);
+  const current = await getSyncState(email);
   const newState = { ...current, ...updates };
   
-  stmt.run({
-    account_email: email,
-    last_order_id: newState.last_order_id,
-    last_product_id: newState.last_product_id,
-    last_session_id: newState.last_session_id,
-    last_poll_at: newState.last_poll_at,
-    last_full_sync_at: newState.last_full_sync_at
-  });
+  if (isPostgres) {
+    await dbWrapper.query(`
+      INSERT INTO sync_state 
+      (account_email, last_order_id, last_product_id, last_session_id, last_poll_at, last_full_sync_at)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (account_email) DO UPDATE SET
+        last_order_id = EXCLUDED.last_order_id,
+        last_product_id = EXCLUDED.last_product_id,
+        last_session_id = EXCLUDED.last_session_id,
+        last_poll_at = EXCLUDED.last_poll_at,
+        last_full_sync_at = EXCLUDED.last_full_sync_at
+    `, [newState.account_email, newState.last_order_id, newState.last_product_id, newState.last_session_id, newState.last_poll_at, newState.last_full_sync_at]);
+  } else {
+    const db = getDb();
+    const stmt = db.prepare(`
+      INSERT OR REPLACE INTO sync_state 
+      (account_email, last_order_id, last_product_id, last_session_id, last_poll_at, last_full_sync_at)
+      VALUES (@account_email, @last_order_id, @last_product_id, @last_session_id, @last_poll_at, @last_full_sync_at)
+    `);
+    
+    stmt.run({
+      account_email: newState.account_email,
+      last_order_id: newState.last_order_id,
+      last_product_id: newState.last_product_id,
+      last_session_id: newState.last_session_id,
+      last_poll_at: newState.last_poll_at,
+      last_full_sync_at: newState.last_full_sync_at
+    });
+  }
 }
 
 async function fetchEndpointSince(endpoint, email, token, sinceId) {
@@ -266,7 +298,7 @@ async function pollNewData(email, password) {
     console.log(`🔍 Polling new data for ${email}...`);
     const db = getDb();
     const token = await login(email, password);
-    const syncState = getSyncState(db, email);
+    const syncState = await getSyncState(email);
     
     // Obtener datos desde el último ID conocido
     const [newOrders, newProducts, newSessions] = await Promise.all([
@@ -305,7 +337,7 @@ async function pollNewData(email, password) {
     }
     
     // Actualizar estado de sincronización
-    updateSyncState(db, email, {
+    await updateSyncState(email, {
       last_order_id: maxOrderId,
       last_product_id: maxProductId,
       last_session_id: maxSessionId,
@@ -373,7 +405,7 @@ async function performSync(fromDate, toDate, isAutoSync = false) {
       const maxProductId = Math.max(0, ...(Array.isArray(products) ? products.map(p => p.idSaleProduct || p.id || 0) : [0]));
       const maxSessionId = Math.max(0, ...(Array.isArray(sessions) ? sessions.map(s => s.idSession || s.id || 0) : [0]));
       
-      updateSyncState(db, email, {
+      await updateSyncState(email, {
         last_order_id: maxOrderId,
         last_product_id: maxProductId,
         last_session_id: maxSessionId,
