@@ -13,9 +13,7 @@ services:
       - key: SESSION_SECRET
         generateValue: true
       - key: DATABASE_URL
-        fromDatabase:
-          name: dash-db
-          property: connectionString
+        value: postgresql://dash_v07q_user:rks2nUzKb3nPDkKevece0ewYRPAoXftw@dpg-d3sk9pili9vc73alfui0-a/dash_v07q
       - key: LINISCO_BASE
         value: http://pos.linisco.com.ar
       - key: LINISCO_LOGIN
@@ -48,7 +46,3 @@ services:
         value: 10020@linisco.com.ar
       - key: LINISCO_PASSWORD_7
         value: YOUR_PASSWORD_7
-
-databases:
-  - name: dash-db
-    plan: free
