@@ -121,6 +121,9 @@ function Filters({ fromDate, toDate, setFromDate, setToDate, storeIds, setStoreI
           <label>Hasta</label>
           <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
         </div>
+        <button onClick={onLoadHistorical} className="btn btn-primary" title="Cargar datos históricos del año completo">
+          📊 Cargar Histórico
+        </button>
       </div>
       <div style={{ background: '#fff', padding: 12, borderRadius: 8, boxShadow: '0 1px 4px rgba(0,0,0,.06)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -265,6 +268,23 @@ export function App() {
     return () => clearInterval(interval)
   }, [logged, fromDate, toDate, storeIds])
 
+
+  const onLoadHistorical = async () => {
+    try {
+      console.log('🔄 Loading historical data...')
+      const result = await api('/sync/load-historical', { method: 'POST' })
+      console.log('✅ Historical data loaded:', result)
+      
+      // Recargar datos después de la carga histórica
+      await loadAll()
+      
+      // Mostrar mensaje de éxito
+      alert(`Datos históricos cargados exitosamente!\nPeríodo: ${result.fromDate} a ${result.toDate}\nResultado: ${JSON.stringify(result, null, 2)}`)
+    } catch (error) {
+      console.error('Historical load error:', error)
+      alert(`Error al cargar datos históricos: ${error.message}`)
+    }
+  }
 
   const onLogout = async () => {
     try { await api('/auth/logout', { method: 'POST' }) } catch {}

@@ -712,6 +712,43 @@ syncRouter.post('/check-and-load-year', async (req, res) => {
   }
 });
 
+// Endpoint para cargar datos históricos manualmente
+syncRouter.post('/load-historical', requireAuth, async (req, res) => {
+  try {
+    const { fromDate, toDate } = req.body || {};
+    
+    // Usar fechas por defecto del año actual si no se especifican
+    const currentYear = new Date().getFullYear();
+    const defaultFromDate = fromDate || `${currentYear}-01-01`;
+    const defaultToDate = toDate || `${currentYear}-12-31`;
+    
+    console.log(`🔄 Manual historical load requested: ${defaultFromDate} to ${defaultToDate}`);
+    
+    const result = await performSync(defaultFromDate, defaultToDate, false);
+    
+    const failed = result.results.filter(r => !r.ok);
+    if (failed.length) {
+      return res.status(207).json({ 
+        ok: false, 
+        partial: true, 
+        ...result,
+        message: `Historical load completed with some failures from ${defaultFromDate} to ${defaultToDate}`
+      });
+    }
+    
+    res.json({ 
+      success: true, 
+      ...result,
+      message: `Historical data loaded from ${defaultFromDate} to ${defaultToDate}`,
+      fromDate: defaultFromDate,
+      toDate: defaultToDate
+    });
+  } catch (error) {
+    console.error('Historical load error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Exportar funciones para uso en index.js
 export { startHybridSync, performPolling, performLocalValidation, checkAndLoadYearData };
 

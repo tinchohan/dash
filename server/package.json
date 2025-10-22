@@ -9,7 +9,8 @@
     "dev": "node index.js",
     "migrate": "node migrate.js",
     "build:client": "cd ../client && npm run build && xcopy /E /I /Y dist ..\\server\\public > NUL 2>&1 || cp -r dist ../server/public",
-    "init-data": "node scripts/init-data.js"
+    "init-data": "node scripts/init-data.js",
+    "load-historical": "node scripts/load-historical-data.js"
   },
   "dependencies": {
     "better-sqlite3": "^9.6.0",
