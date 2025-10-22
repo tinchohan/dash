@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import dayjs from 'dayjs';
 import { getDb } from '../lib/db.js';
+import { dbWrapper } from '../lib/db-wrapper.js';
 import { requireAuth } from './auth.js';
 
 export const statsRouter = Router();
@@ -25,11 +26,73 @@ function whereAndParams({ fromDate, toDate, storeIds }) {
   return { sql, params };
 }
 
-statsRouter.get('/overview', requireAuth, (req, res) => {
-  const db = getDb();
-  const { sql, params } = whereAndParams(req.query);
-  const totalOrders = db.prepare(`SELECT COUNT(*) as c, SUM(total_amount) as total FROM sale_orders ${sql}`).get(params);
-  const byPayment = db.prepare(`SELECT payment_method as method, COUNT(*) as c, IFNULL(SUM(total_amount),0) as total FROM sale_orders ${sql} GROUP BY payment_method`).all(params);
+// Helper function to execute queries with both SQLite and PostgreSQL support
+async function executeQuery(sql, params = {}) {
+  const isPostgres = process.env.DATABASE_URL ? true : false;
+  
+  if (isPostgres) {
+    // Convert SQLite syntax to PostgreSQL
+    let pgSql = sql;
+    let pgParams = [];
+    
+    // Convert @param syntax to $1, $2, etc.
+    const paramKeys = Object.keys(params);
+    paramKeys.forEach((key, index) => {
+      const placeholder = `@${key}`;
+      const pgPlaceholder = `$${index + 1}`;
+      pgSql = pgSql.replace(new RegExp(placeholder, 'g'), pgPlaceholder);
+      pgParams.push(params[key]);
+    });
+    
+    // Convert SQLite functions to PostgreSQL
+    pgSql = pgSql.replace(/IFNULL\(/g, 'COALESCE(');
+    pgSql = pgSql.replace(/datetime\(/g, 'created_at::timestamp');
+    
+    return await dbWrapper.query(pgSql, pgParams);
+  } else {
+    // SQLite
+    const db = getDb();
+    const stmt = db.prepare(sql);
+    return stmt.all(params);
+  }
+}
+
+async function executeQuerySingle(sql, params = {}) {
+  const isPostgres = process.env.DATABASE_URL ? true : false;
+  
+  if (isPostgres) {
+    // Convert SQLite syntax to PostgreSQL
+    let pgSql = sql;
+    let pgParams = [];
+    
+    // Convert @param syntax to $1, $2, etc.
+    const paramKeys = Object.keys(params);
+    paramKeys.forEach((key, index) => {
+      const placeholder = `@${key}`;
+      const pgPlaceholder = `$${index + 1}`;
+      pgSql = pgSql.replace(new RegExp(placeholder, 'g'), pgPlaceholder);
+      pgParams.push(params[key]);
+    });
+    
+    // Convert SQLite functions to PostgreSQL
+    pgSql = pgSql.replace(/IFNULL\(/g, 'COALESCE(');
+    pgSql = pgSql.replace(/datetime\(/g, 'created_at::timestamp');
+    
+    const result = await dbWrapper.query(pgSql, pgParams);
+    return result[0] || null;
+  } else {
+    // SQLite
+    const db = getDb();
+    const stmt = db.prepare(sql);
+    return stmt.get(params);
+  }
+}
+
+statsRouter.get('/overview', requireAuth, async (req, res) => {
+  try {
+    const { sql, params } = whereAndParams(req.query);
+    const totalOrders = await executeQuerySingle(`SELECT COUNT(*) as c, SUM(total_amount) as total FROM sale_orders ${sql}`, params);
+    const byPayment = await executeQuery(`SELECT payment_method as method, COUNT(*) as c, IFNULL(SUM(total_amount),0) as total FROM sale_orders ${sql} GROUP BY payment_method`, params);
 
   // Group payment methods into Efectivo, Apps, Otros
   const groups = {
@@ -48,72 +111,91 @@ statsRouter.get('/overview', requireAuth, (req, res) => {
     grouped[target].total += Number(row.total || 0);
   }
 
-  res.json({
-    totalOrders: totalOrders.c || 0,
-    totalAmount: totalOrders.total || 0,
-    paymentMethods: byPayment,
-    paymentGroups: [grouped.Efectivo, grouped.Apps, grouped.Otros],
-  });
+    res.json({
+      totalOrders: totalOrders.c || 0,
+      totalAmount: totalOrders.total || 0,
+      paymentMethods: byPayment,
+      paymentGroups: [grouped.Efectivo, grouped.Apps, grouped.Otros],
+    });
+  } catch (error) {
+    console.error('Error in overview endpoint:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
-statsRouter.get('/by-store', requireAuth, (req, res) => {
-  const db = getDb();
-  const { sql, params } = whereAndParams(req.query);
-  const rows = db.prepare(`SELECT store_id, COUNT(*) as c, IFNULL(SUM(total_amount),0) as total FROM sale_orders ${sql} GROUP BY store_id`).all(params);
-  res.json({ stores: rows });
+statsRouter.get('/by-store', requireAuth, async (req, res) => {
+  try {
+    const { sql, params } = whereAndParams(req.query);
+    const rows = await executeQuery(`SELECT store_id, COUNT(*) as c, IFNULL(SUM(total_amount),0) as total FROM sale_orders ${sql} GROUP BY store_id`, params);
+    res.json({ stores: rows });
+  } catch (error) {
+    console.error('Error in by-store endpoint:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
-statsRouter.get('/daily', requireAuth, (req, res) => {
-  const db = getDb();
-  const { sql, params } = whereAndParams(req.query);
-  const rows = db.prepare(`SELECT date(created_at) as day, COUNT(*) as c, IFNULL(SUM(total_amount),0) as total FROM sale_orders ${sql} GROUP BY date(created_at) ORDER BY day`).all(params);
-  res.json({ days: rows });
+statsRouter.get('/daily', requireAuth, async (req, res) => {
+  try {
+    const { sql, params } = whereAndParams(req.query);
+    const rows = await executeQuery(`SELECT date(created_at) as day, COUNT(*) as c, IFNULL(SUM(total_amount),0) as total FROM sale_orders ${sql} GROUP BY date(created_at) ORDER BY day`, params);
+    res.json({ days: rows });
+  } catch (error) {
+    console.error('Error in daily endpoint:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
-statsRouter.get('/top-products', requireAuth, (req, res) => {
-  const db = getDb();
-  const { sql, params } = whereAndParams(req.query);
-  const rows = db.prepare(`SELECT product_name as name, IFNULL(SUM(total_amount),0) as total, IFNULL(SUM(quantity),0) as qty FROM sale_products ${sql} GROUP BY product_name ORDER BY total DESC LIMIT 20`).all(params);
-  res.json({ products: rows });
+statsRouter.get('/top-products', requireAuth, async (req, res) => {
+  try {
+    const { sql, params } = whereAndParams(req.query);
+    const rows = await executeQuery(`SELECT product_name as name, IFNULL(SUM(total_amount),0) as total, IFNULL(SUM(quantity),0) as qty FROM sale_products ${sql} GROUP BY product_name ORDER BY total DESC LIMIT 20`, params);
+    res.json({ products: rows });
+  } catch (error) {
+    console.error('Error in top-products endpoint:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // List distinct stores present in DB
-statsRouter.get('/stores', requireAuth, (_req, res) => {
-  const db = getDb();
-  const rows = db.prepare('SELECT DISTINCT store_id FROM sale_orders WHERE store_id IS NOT NULL ORDER BY store_id').all();
-  
-  // Si no hay datos en la base de datos, usar tiendas hardcodeadas como respaldo
-  if (rows.length === 0) {
-    console.log('No stores found in database, using hardcoded stores');
-    res.json({ stores: ['63953', '66220', '72267', '30036', '30038', '10019', '10020'] });
-    return;
+statsRouter.get('/stores', requireAuth, async (_req, res) => {
+  try {
+    const rows = await executeQuery('SELECT DISTINCT store_id FROM sale_orders WHERE store_id IS NOT NULL ORDER BY store_id');
+    
+    // Si no hay datos en la base de datos, usar tiendas hardcodeadas como respaldo
+    if (rows.length === 0) {
+      console.log('No stores found in database, using hardcoded stores');
+      res.json({ stores: ['63953', '66220', '72267', '30036', '30038', '10019', '10020'] });
+      return;
+    }
+    
+    res.json({ stores: rows.map(r => r.store_id) });
+  } catch (error) {
+    console.error('Error in stores endpoint:', error);
+    res.status(500).json({ error: error.message });
   }
-  
-  res.json({ stores: rows.map(r => r.store_id) });
 });
 
 // Recent sales endpoint
-statsRouter.get('/recent-sales', requireAuth, (req, res) => {
-  const db = getDb();
-  const { storeIds } = req.query;
-  
-  // Construir WHERE clause solo para tiendas (no fechas para mostrar las más recientes)
-  const where = [];
-  const params = {};
-  
-  if (storeIds) {
-    const ids = storeIds.split(',').filter(Boolean);
-    if (ids.length > 0) {
-      where.push(`o.store_id IN (${ids.map((_, i) => `@s${i}`).join(',')})`);
-      ids.forEach((v, i) => (params[`s${i}`] = Number(v)));
-    }
-  }
-  
-  const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  
+statsRouter.get('/recent-sales', requireAuth, async (req, res) => {
   try {
+    const { storeIds } = req.query;
+    
+    // Construir WHERE clause solo para tiendas (no fechas para mostrar las más recientes)
+    const where = [];
+    const params = {};
+    
+    if (storeIds) {
+      const ids = storeIds.split(',').filter(Boolean);
+      if (ids.length > 0) {
+        where.push(`o.store_id IN (${ids.map((_, i) => `@s${i}`).join(',')})`);
+        ids.forEach((v, i) => (params[`s${i}`] = Number(v)));
+      }
+    }
+    
+    const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    
     // Obtener las últimas órdenes (sin filtro de fecha para mostrar las más recientes)
-    const recentOrders = db.prepare(`
+    const recentOrders = await executeQuery(`
       SELECT 
         o.id,
         o.store_id,
@@ -128,7 +210,7 @@ statsRouter.get('/recent-sales', requireAuth, (req, res) => {
       ${whereClause}
       ORDER BY o.created_at DESC, p.total_amount DESC
       LIMIT 15
-    `).all(params);
+    `, params);
     
     // Agrupar por orden y tomar el producto principal (mayor monto)
     const groupedOrders = {};
