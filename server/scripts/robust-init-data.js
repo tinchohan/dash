@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 
 /**
- * Script de inicialización de datos para Render
- * Se ejecuta durante el deploy para cargar datos históricos del año
- * antes de que la webapp esté live
+ * Script de inicialización ROBUSTO de datos para Render
+ * Incluye retry logic y manejo mejorado de errores
  */
 
 import 'dotenv/config';
@@ -22,8 +21,25 @@ function getAccountsFromEnv() {
   return accounts;
 }
 
+// Función para retry con backoff exponencial
+async function retryWithBackoff(fn, maxRetries = 3, baseDelay = 1000) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (attempt === maxRetries) {
+        throw error;
+      }
+      const delay = baseDelay * Math.pow(2, attempt - 1);
+      console.log(`⚠️ Attempt ${attempt} failed, retrying in ${delay}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+}
+
 async function initializeData() {
-  console.log('🚀 Starting data initialization for Render deploy...');
+  console.log('🚀 Starting ROBUST data initialization for Render deploy...');
+  console.log('📅 Initialization started at:', new Date().toISOString());
   
   try {
     // Inicializar la base de datos
@@ -62,8 +78,11 @@ async function initializeData() {
     console.log(`📅 Rango completo: ${fromDate} a ${toDate}`);
     console.log(`🏪 Tiendas a procesar: ${accounts.length}`);
     
-    // Realizar sincronización con logging detallado
-    const result = await performSync(fromDate, toDate, true);
+    // Realizar sincronización con retry logic
+    const result = await retryWithBackoff(async () => {
+      console.log('🔄 Attempting data synchronization...');
+      return await performSync(fromDate, toDate, true);
+    }, 3, 5000); // 3 intentos, delay base de 5 segundos
     
     console.log(`📊 Resultado de la sincronización:`);
     console.log(`  - Cuentas procesadas: ${result.results.length}`);
@@ -95,6 +114,15 @@ async function initializeData() {
       console.log(`  - Products: ${finalProductCount}`);
       console.log(`  - Sessions: ${finalSessionCount}`);
       
+      // Verificar que tenemos datos de múltiples tiendas
+      const storeCount = db.prepare('SELECT COUNT(DISTINCT store_id) as count FROM sale_orders').get().count;
+      console.log(`🏪 Stores with data: ${storeCount}`);
+      
+      if (storeCount < 2) {
+        console.log('⚠️ Warning: Only one store has data. This might indicate an issue.');
+      }
+      
+      console.log('📅 Initialization finished at:', new Date().toISOString());
       process.exit(0);
     } else {
       console.log('❌ No data was loaded from any account');
@@ -104,6 +132,7 @@ async function initializeData() {
   } catch (error) {
     console.error('❌ Data initialization failed:', error.message);
     console.error('Stack trace:', error.stack);
+    console.log('📅 Initialization failed at:', new Date().toISOString());
     process.exit(1);
   }
 }
