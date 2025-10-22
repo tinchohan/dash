@@ -3,7 +3,7 @@ services:
     name: dash-app
     env: node
     plan: free
-    buildCommand: npm install && npm run build
+    buildCommand: ./build.sh
     startCommand: node server/index.js
     envVars:
       - key: NODE_ENV

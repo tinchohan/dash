@@ -96,21 +96,10 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log('Static files served from:', path.join(__dirname, 'public'));
   
   // Iniciar sistema híbrido después de que el servidor esté listo
-  setTimeout(async () => {
+  setTimeout(() => {
     try {
       console.log('🔄 Starting hybrid sync system...');
-      
-      // Primero verificar y cargar datos del año si es necesario
-      console.log('🔍 Checking if database needs initial data load...');
-      const yearLoadResult = await checkAndLoadYearData();
-      
-      if (yearLoadResult.success && !yearLoadResult.alreadyHasData) {
-        console.log(`✅ Initial year data loaded for ${yearLoadResult.year}`);
-      } else if (yearLoadResult.alreadyHasData) {
-        console.log(`ℹ️ Database already has ${yearLoadResult.orderCount} orders`);
-      }
-      
-      // Luego iniciar el sistema híbrido
+      console.log('ℹ️ Data initialization was completed during build process');
       startHybridSync();
     } catch (error) {
       console.error('❌ Failed to start hybrid sync system:', error.message);

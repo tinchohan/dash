@@ -236,28 +236,10 @@ export function App() {
     return () => clearInterval(interval)
   }, [logged])
 
-  // Verificar y cargar datos del año al loguearse
+  // Los datos ya fueron cargados durante el build process
   useEffect(() => {
     if (!logged) return
-    
-    const checkAndLoadYear = async () => {
-      try {
-        console.log('🔍 Checking if database needs initial data load...')
-        const result = await api('/sync/check-and-load-year', { method: 'POST' })
-        
-        if (result.success && !result.alreadyHasData) {
-          console.log(`✅ Initial year data loaded for ${result.year}`)
-          // Recargar datos después de la carga inicial
-          await loadAll()
-        } else if (result.alreadyHasData) {
-          console.log(`ℹ️ Database already has ${result.orderCount} orders`)
-        }
-      } catch (error) {
-        console.error('Check and load year error:', error)
-      }
-    }
-    
-    checkAndLoadYear()
+    console.log('ℹ️ Data initialization was completed during build process')
   }, [logged])
 
   // Polling automático cada 5 minutos
