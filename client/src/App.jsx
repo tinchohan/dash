@@ -121,8 +121,8 @@ function Filters({ fromDate, toDate, setFromDate, setToDate, storeIds, setStoreI
           <label>Hasta</label>
           <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
         </div>
-        <button onClick={onLoadHistorical} className="btn btn-primary" title="Cargar datos históricos del año completo">
-          📊 Cargar Histórico
+        <button onClick={onLoadHistorical} className="btn btn-primary" title="Cargar datos históricos con fechas personalizadas (evita duplicados y órdenes negativas)">
+          📊 Cargar Histórico Personalizado
         </button>
       </div>
       <div style={{ background: '#fff', padding: 12, borderRadius: 8, boxShadow: '0 1px 4px rgba(0,0,0,.06)' }}>
@@ -270,19 +270,57 @@ export function App() {
 
 
   const onLoadHistorical = async () => {
+    // Mostrar modal para seleccionar fechas
+    const fromDate = prompt('Fecha de inicio (YYYY-MM-DD):', '2024-01-01')
+    if (!fromDate) return
+    
+    const toDate = prompt('Fecha de fin (YYYY-MM-DD):', '2024-12-31')
+    if (!toDate) return
+    
+    // Validar fechas
+    const fromDateObj = new Date(fromDate)
+    const toDateObj = new Date(toDate)
+    
+    if (isNaN(fromDateObj.getTime()) || isNaN(toDateObj.getTime())) {
+      alert('❌ Fechas inválidas. Por favor usa el formato YYYY-MM-DD')
+      return
+    }
+    
+    if (fromDateObj > toDateObj) {
+      alert('❌ La fecha de inicio no puede ser mayor que la fecha de fin')
+      return
+    }
+    
+    // Confirmar carga
+    const confirmLoad = confirm(`¿Cargar datos históricos del ${fromDate} al ${toDate}?\n\nEsto puede tomar varios minutos y evitará duplicados automáticamente.`)
+    if (!confirmLoad) return
+    
     try {
-      console.log('🔄 Loading historical data...')
-      const result = await api('/sync/load-historical', { method: 'POST' })
+      console.log(`🔄 Loading historical data from ${fromDate} to ${toDate}...`)
+      const result = await api('/sync/load-historical', { 
+        method: 'POST',
+        body: JSON.stringify({ fromDate, toDate })
+      })
       console.log('✅ Historical data loaded:', result)
       
       // Recargar datos después de la carga histórica
       await loadAll()
       
-      // Mostrar mensaje de éxito
-      alert(`Datos históricos cargados exitosamente!\nPeríodo: ${result.fromDate} a ${result.toDate}\nResultado: ${JSON.stringify(result, null, 2)}`)
+      // Mostrar mensaje de éxito con detalles
+      const successMessage = `✅ Datos históricos cargados exitosamente!\n\n` +
+        `📅 Período: ${result.fromDate} a ${result.toDate}\n` +
+        `🏪 Cuentas procesadas: ${result.results.length}\n` +
+        `✅ Cuentas exitosas: ${result.results.filter(r => r.ok).length}\n` +
+        `❌ Cuentas fallidas: ${result.results.filter(r => !r.ok).length}\n\n` +
+        `📊 Detalles por cuenta:\n${result.results.map(r => 
+          r.ok ? `✅ ${r.email}: ${r.counts?.sale_orders || 0} órdenes, ${r.counts?.sale_products || 0} productos` 
+          : `❌ ${r.email}: ${r.error}`
+        ).join('\n')}`
+      
+      alert(successMessage)
     } catch (error) {
       console.error('Historical load error:', error)
-      alert(`Error al cargar datos históricos: ${error.message}`)
+      alert(`❌ Error al cargar datos históricos: ${error.message}`)
     }
   }
 

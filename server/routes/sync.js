@@ -717,14 +717,63 @@ syncRouter.post('/load-historical', requireAuth, async (req, res) => {
   try {
     const { fromDate, toDate } = req.body || {};
     
-    // Usar fechas por defecto del año actual si no se especifican
-    const currentYear = new Date().getFullYear();
-    const defaultFromDate = fromDate || `${currentYear}-01-01`;
-    const defaultToDate = toDate || `${currentYear}-12-31`;
+    // Validar fechas requeridas
+    if (!fromDate || !toDate) {
+      return res.status(400).json({ 
+        error: 'fromDate and toDate are required',
+        message: 'Debe proporcionar fechas de inicio y fin'
+      });
+    }
     
-    console.log(`🔄 Manual historical load requested: ${defaultFromDate} to ${defaultToDate}`);
+    // Validar formato de fechas
+    const fromDateObj = new Date(fromDate);
+    const toDateObj = new Date(toDate);
     
-    const result = await performSync(defaultFromDate, defaultToDate, false);
+    if (isNaN(fromDateObj.getTime()) || isNaN(toDateObj.getTime())) {
+      return res.status(400).json({ 
+        error: 'Invalid date format',
+        message: 'Las fechas deben estar en formato YYYY-MM-DD'
+      });
+    }
+    
+    if (fromDateObj > toDateObj) {
+      return res.status(400).json({ 
+        error: 'Invalid date range',
+        message: 'La fecha de inicio no puede ser mayor que la fecha de fin'
+      });
+    }
+    
+    console.log(`🔄 Manual historical load requested: ${fromDate} to ${toDate}`);
+    console.log(`📅 Date range: ${fromDate} to ${toDate}`);
+    console.log(`⏱️ This may take several minutes depending on data volume...`);
+    
+    // Verificar datos existentes antes de la carga
+    let existingOrders = 0;
+    if (process.env.DATABASE_URL) {
+      const result = await dbWrapper.query('SELECT COUNT(*) as count FROM sale_orders');
+      existingOrders = result[0].count;
+    } else {
+      const db = getDb();
+      existingOrders = db.prepare('SELECT COUNT(*) as count FROM sale_orders').get().count;
+    }
+    
+    console.log(`📊 Existing orders before load: ${existingOrders}`);
+    
+    const result = await performSync(fromDate, toDate, false);
+    
+    // Verificar datos después de la carga
+    let finalOrders = 0;
+    if (process.env.DATABASE_URL) {
+      const result = await dbWrapper.query('SELECT COUNT(*) as count FROM sale_orders');
+      finalOrders = result[0].count;
+    } else {
+      const db = getDb();
+      finalOrders = db.prepare('SELECT COUNT(*) as count FROM sale_orders').get().count;
+    }
+    
+    const newOrders = finalOrders - existingOrders;
+    console.log(`📊 New orders added: ${newOrders}`);
+    console.log(`📊 Total orders after load: ${finalOrders}`);
     
     const failed = result.results.filter(r => !r.ok);
     if (failed.length) {
@@ -732,16 +781,26 @@ syncRouter.post('/load-historical', requireAuth, async (req, res) => {
         ok: false, 
         partial: true, 
         ...result,
-        message: `Historical load completed with some failures from ${defaultFromDate} to ${defaultToDate}`
+        message: `Historical load completed with some failures from ${fromDate} to ${toDate}`,
+        fromDate,
+        toDate,
+        existingOrders,
+        newOrders,
+        finalOrders
       });
     }
     
     res.json({ 
       success: true, 
       ...result,
-      message: `Historical data loaded from ${defaultFromDate} to ${defaultToDate}`,
-      fromDate: defaultFromDate,
-      toDate: defaultToDate
+      message: `Historical data loaded from ${fromDate} to ${toDate}`,
+      fromDate,
+      toDate,
+      existingOrders,
+      newOrders,
+      finalOrders,
+      duplicatePrevention: 'ON CONFLICT clauses prevent duplicates',
+      negativeOrdersFiltered: 'Orders with negative totals are automatically filtered out'
     });
   } catch (error) {
     console.error('Historical load error:', error);
