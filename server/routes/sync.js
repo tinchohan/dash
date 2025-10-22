@@ -2,6 +2,7 @@ import { Router } from 'express';
 import fetch from 'node-fetch';
 import dayjs from 'dayjs';
 import { getDb } from '../lib/db.js';
+import { dbWrapper } from '../lib/db-wrapper.js';
 import { requireAuth } from './auth.js';
 
 export const syncRouter = Router();
@@ -67,13 +68,11 @@ function parseDateStr(str) {
   return d.isValid() ? d.format('DD/MM/YYYY') : dayjs().format('DD/MM/YYYY');
 }
 
-function insertOrders(db, rows, email) {
-  const insert = db.prepare(`
-    INSERT OR REPLACE INTO sale_orders (id, store_id, account_email, created_at, total_amount, payment_method, raw)
-    VALUES (@id, @store_id, @account_email, @created_at, @total_amount, @payment_method, @raw)
-  `);
-  const tx = db.transaction((items) => {
-    for (const r of items) {
+async function insertOrders(rows, email) {
+  const isPostgres = process.env.DATABASE_URL ? true : false;
+  
+  await dbWrapper.transaction(async (db) => {
+    for (const r of rows || []) {
       const totalAmount = r.total_amount || r.total || r.amount || 0;
       
       // Filtrar órdenes con total negativo (devoluciones, cancelaciones, etc.)
@@ -82,31 +81,45 @@ function insertOrders(db, rows, email) {
         continue;
       }
       
-      insert.run({
-        // idSaleOrder is the sale order identifier in sample
+      const orderData = {
         id: r.idSaleOrder || r.id,
-        // shopNumber identifies the store/shop in sample
         store_id: r.store_id || r.storeId || r.shopNumber || null,
         account_email: email,
-        // orderDate is the timestamp in sample
         created_at: r.created_at || r.createdAt || r.orderDate || r.date || null,
         total_amount: totalAmount,
-        // paymentmethod is lowercase in sample
         payment_method: r.payment_method || r.paymentMethod || r.paymentmethod || null,
         raw: JSON.stringify(r)
-      });
+      };
+
+      if (isPostgres) {
+        await db.query(`
+          INSERT INTO sale_orders (id, store_id, account_email, created_at, total_amount, payment_method, raw)
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
+          ON CONFLICT (id) DO UPDATE SET
+            store_id = EXCLUDED.store_id,
+            account_email = EXCLUDED.account_email,
+            created_at = EXCLUDED.created_at,
+            total_amount = EXCLUDED.total_amount,
+            payment_method = EXCLUDED.payment_method,
+            raw = EXCLUDED.raw
+        `, [orderData.id, orderData.store_id, orderData.account_email, orderData.created_at, orderData.total_amount, orderData.payment_method, orderData.raw]);
+      } else {
+        // SQLite
+        const insert = db.prepare(`
+          INSERT OR REPLACE INTO sale_orders (id, store_id, account_email, created_at, total_amount, payment_method, raw)
+          VALUES (@id, @store_id, @account_email, @created_at, @total_amount, @payment_method, @raw)
+        `);
+        insert.run(orderData);
+      }
     }
   });
-  tx(rows || []);
 }
 
-function insertProducts(db, rows, email) {
-  const insert = db.prepare(`
-    INSERT OR REPLACE INTO sale_products (id, order_id, store_id, account_email, created_at, product_name, quantity, total_amount, raw)
-    VALUES (@id, @order_id, @store_id, @account_email, @created_at, @product_name, @quantity, @total_amount, @raw)
-  `);
-  const tx = db.transaction((items) => {
-    for (const r of items) {
+async function insertProducts(rows, email) {
+  const isPostgres = process.env.DATABASE_URL ? true : false;
+  
+  await dbWrapper.transaction(async (db) => {
+    for (const r of rows || []) {
       const totalAmount = r.total_amount || r.total || r.amount || ((r.salePrice || 0) * (r.quantity || 1));
       
       // Filtrar productos con total negativo (devoluciones, cancelaciones, etc.)
@@ -115,53 +128,97 @@ function insertProducts(db, rows, email) {
         continue;
       }
       
-      insert.run({
-        // idSaleProduct is the product line identifier in sample
+      const productData = {
         id: r.idSaleProduct || r.id,
         order_id: r.order_id || r.orderId || r.idSaleOrder || null,
-        // shopNumber identifies the store/shop in sample
         store_id: r.store_id || r.storeId || r.shopNumber || null,
         account_email: email,
-        // sale_products does not include date; keep null to be derived via join
         created_at: r.created_at || r.createdAt || r.date || null,
         product_name: r.product_name || r.name || r.product || null,
         quantity: r.quantity || r.qty || 0,
-        // Prefer explicit totals, else compute from salePrice * quantity
         total_amount: totalAmount,
         raw: JSON.stringify(r)
-      });
+      };
+
+      if (isPostgres) {
+        await db.query(`
+          INSERT INTO sale_products (id, order_id, store_id, account_email, created_at, product_name, quantity, total_amount, raw)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          ON CONFLICT (id) DO UPDATE SET
+            order_id = EXCLUDED.order_id,
+            store_id = EXCLUDED.store_id,
+            account_email = EXCLUDED.account_email,
+            created_at = EXCLUDED.created_at,
+            product_name = EXCLUDED.product_name,
+            quantity = EXCLUDED.quantity,
+            total_amount = EXCLUDED.total_amount,
+            raw = EXCLUDED.raw
+        `, [productData.id, productData.order_id, productData.store_id, productData.account_email, productData.created_at, productData.product_name, productData.quantity, productData.total_amount, productData.raw]);
+      } else {
+        // SQLite
+        const insert = db.prepare(`
+          INSERT OR REPLACE INTO sale_products (id, order_id, store_id, account_email, created_at, product_name, quantity, total_amount, raw)
+          VALUES (@id, @order_id, @store_id, @account_email, @created_at, @product_name, @quantity, @total_amount, @raw)
+        `);
+        insert.run(productData);
+      }
     }
   });
-  tx(rows || []);
+
   // Backfill created_at from sale_orders when missing
-  db.prepare(`
-    UPDATE sale_products
-    SET created_at = (
-      SELECT created_at FROM sale_orders o WHERE o.id = sale_products.order_id
-    )
-    WHERE account_email = @email AND created_at IS NULL AND order_id IS NOT NULL
-  `).run({ email });
+  if (isPostgres) {
+    await dbWrapper.query(`
+      UPDATE sale_products
+      SET created_at = (
+        SELECT created_at FROM sale_orders o WHERE o.id = sale_products.order_id
+      )
+      WHERE account_email = $1 AND created_at IS NULL AND order_id IS NOT NULL
+    `, [email]);
+  } else {
+    const db = getDb();
+    db.prepare(`
+      UPDATE sale_products
+      SET created_at = (
+        SELECT created_at FROM sale_orders o WHERE o.id = sale_products.order_id
+      )
+      WHERE account_email = @email AND created_at IS NULL AND order_id IS NOT NULL
+    `).run({ email });
+  }
 }
 
-function insertSessions(db, rows, email) {
-  const insert = db.prepare(`
-    INSERT OR REPLACE INTO psessions (id, store_id, account_email, created_at, raw)
-    VALUES (@id, @store_id, @account_email, @created_at, @raw)
-  `);
-  const tx = db.transaction((items) => {
-    for (const r of items) {
-      insert.run({
-        // idSession in sample
+async function insertSessions(rows, email) {
+  const isPostgres = process.env.DATABASE_URL ? true : false;
+  
+  await dbWrapper.transaction(async (db) => {
+    for (const r of rows || []) {
+      const sessionData = {
         id: r.idSession || r.id,
         store_id: r.store_id || r.storeId || r.shopNumber || null,
         account_email: email,
-        // use checkin as the timestamp for session
         created_at: r.created_at || r.createdAt || r.checkin || r.date || null,
         raw: JSON.stringify(r)
-      });
+      };
+
+      if (isPostgres) {
+        await db.query(`
+          INSERT INTO psessions (id, store_id, account_email, created_at, raw)
+          VALUES ($1, $2, $3, $4, $5)
+          ON CONFLICT (id) DO UPDATE SET
+            store_id = EXCLUDED.store_id,
+            account_email = EXCLUDED.account_email,
+            created_at = EXCLUDED.created_at,
+            raw = EXCLUDED.raw
+        `, [sessionData.id, sessionData.store_id, sessionData.account_email, sessionData.created_at, sessionData.raw]);
+      } else {
+        // SQLite
+        const insert = db.prepare(`
+          INSERT OR REPLACE INTO psessions (id, store_id, account_email, created_at, raw)
+          VALUES (@id, @store_id, @account_email, @created_at, @raw)
+        `);
+        insert.run(sessionData);
+      }
     }
   });
-  tx(rows || []);
 }
 
 // Funciones para polling inteligente
@@ -225,7 +282,7 @@ async function pollNewData(email, password) {
     
     // Procesar nuevas órdenes
     if (Array.isArray(newOrders) && newOrders.length > 0) {
-      insertOrders(db, newOrders, email);
+      await insertOrders(newOrders, email);
       maxOrderId = Math.max(maxOrderId, ...newOrders.map(o => o.idSaleOrder || o.id || 0));
       hasNewData = true;
       console.log(`📦 New orders: ${newOrders.length}`);
@@ -233,7 +290,7 @@ async function pollNewData(email, password) {
     
     // Procesar nuevos productos
     if (Array.isArray(newProducts) && newProducts.length > 0) {
-      insertProducts(db, newProducts, email);
+      await insertProducts(newProducts, email);
       maxProductId = Math.max(maxProductId, ...newProducts.map(p => p.idSaleProduct || p.id || 0));
       hasNewData = true;
       console.log(`🛍️ New products: ${newProducts.length}`);
@@ -241,7 +298,7 @@ async function pollNewData(email, password) {
     
     // Procesar nuevas sesiones
     if (Array.isArray(newSessions) && newSessions.length > 0) {
-      insertSessions(db, newSessions, email);
+      await insertSessions(newSessions, email);
       maxSessionId = Math.max(maxSessionId, ...newSessions.map(s => s.idSession || s.id || 0));
       hasNewData = true;
       console.log(`👥 New sessions: ${newSessions.length}`);
@@ -307,9 +364,9 @@ async function performSync(fromDate, toDate, isAutoSync = false) {
       ]);
       
       // Save to database
-      insertOrders(db, orders, email);
-      insertProducts(db, products, email);
-      insertSessions(db, sessions, email);
+      await insertOrders(orders, email);
+      await insertProducts(products, email);
+      await insertSessions(sessions, email);
       
       // Update sync state with latest IDs
       const maxOrderId = Math.max(0, ...(Array.isArray(orders) ? orders.map(o => o.idSaleOrder || o.id || 0) : [0]));

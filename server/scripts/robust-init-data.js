@@ -8,6 +8,7 @@
 import 'dotenv/config';
 import { initDatabase } from '../lib/db.js';
 import { getDb } from '../lib/db.js';
+import { dbWrapper } from '../lib/db-wrapper.js';
 import { performSync } from '../routes/sync.js';
 
 // Función para obtener cuentas desde variables de entorno
@@ -60,7 +61,15 @@ async function initializeData() {
     
     // Verificar si hay datos en la base de datos
     const db = getDb();
-    const orderCount = db.prepare('SELECT COUNT(*) as count FROM sale_orders').get().count;
+    let orderCount;
+    if (process.env.DATABASE_URL) {
+      // PostgreSQL
+      const result = await dbWrapper.query('SELECT COUNT(*) as count FROM sale_orders');
+      orderCount = result[0].count;
+    } else {
+      // SQLite
+      orderCount = db.prepare('SELECT COUNT(*) as count FROM sale_orders').get().count;
+    }
     
     if (orderCount > 0) {
       console.log(`ℹ️ Database already has ${orderCount} orders`);
@@ -105,9 +114,23 @@ async function initializeData() {
       console.log(`✅ ${successfulAccounts}/${accounts.length} accounts processed successfully`);
       
       // Verificar datos cargados
-      const finalOrderCount = db.prepare('SELECT COUNT(*) as count FROM sale_orders').get().count;
-      const finalProductCount = db.prepare('SELECT COUNT(*) as count FROM sale_products').get().count;
-      const finalSessionCount = db.prepare('SELECT COUNT(*) as count FROM psessions').get().count;
+      let finalOrderCount, finalProductCount, finalSessionCount;
+      if (process.env.DATABASE_URL) {
+        // PostgreSQL
+        const [orderResult, productResult, sessionResult] = await Promise.all([
+          dbWrapper.query('SELECT COUNT(*) as count FROM sale_orders'),
+          dbWrapper.query('SELECT COUNT(*) as count FROM sale_products'),
+          dbWrapper.query('SELECT COUNT(*) as count FROM psessions')
+        ]);
+        finalOrderCount = orderResult[0].count;
+        finalProductCount = productResult[0].count;
+        finalSessionCount = sessionResult[0].count;
+      } else {
+        // SQLite
+        finalOrderCount = db.prepare('SELECT COUNT(*) as count FROM sale_orders').get().count;
+        finalProductCount = db.prepare('SELECT COUNT(*) as count FROM sale_products').get().count;
+        finalSessionCount = db.prepare('SELECT COUNT(*) as count FROM psessions').get().count;
+      }
       
       console.log(`📊 Final database state:`);
       console.log(`  - Orders: ${finalOrderCount}`);
