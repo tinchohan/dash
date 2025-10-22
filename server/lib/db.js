@@ -19,11 +19,17 @@ export function getDb() {
 
 export function initDatabase() {
   // Check if we should use PostgreSQL (production) or SQLite (development)
+  console.log('🔍 Checking database configuration...');
+  console.log('DATABASE_URL available:', !!process.env.DATABASE_URL);
+  console.log('NODE_ENV:', process.env.NODE_ENV);
+  
   if (process.env.DATABASE_URL) {
     console.log('🐘 Initializing PostgreSQL database...');
+    console.log('DATABASE_URL:', process.env.DATABASE_URL.substring(0, 20) + '...');
     initPostgres();
   } else {
     console.log('🗃️ Initializing SQLite database...');
+    console.log('⚠️ DATABASE_URL not found, falling back to SQLite');
     initSQLite();
   }
 }

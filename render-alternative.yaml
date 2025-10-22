@@ -1,0 +1,55 @@
+services:
+  - type: web
+    name: dash-app
+    env: node
+    plan: free
+    buildCommand: ./pre-build.sh && ./build.sh
+    startCommand: node server/index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: dash-db
+          property: connectionString
+      - key: LINISCO_BASE
+        value: http://pos.linisco.com.ar
+      - key: LINISCO_LOGIN
+        value: https://pos.linisco.com.ar/users/sign_in
+      - key: LINISCO_EMAIL_1
+        value: 63953@linisco.com.ar
+      - key: LINISCO_PASSWORD_1
+        value: YOUR_PASSWORD_1
+      - key: LINISCO_EMAIL_2
+        value: 66220@linisco.com.ar
+      - key: LINISCO_PASSWORD_2
+        value: YOUR_PASSWORD_2
+      - key: LINISCO_EMAIL_3
+        value: 72267@linisco.com.ar
+      - key: LINISCO_PASSWORD_3
+        value: YOUR_PASSWORD_3
+      - key: LINISCO_EMAIL_4
+        value: 30036@linisco.com.ar
+      - key: LINISCO_PASSWORD_4
+        value: YOUR_PASSWORD_4
+      - key: LINISCO_EMAIL_5
+        value: 30038@linisco.com.ar
+      - key: LINISCO_PASSWORD_5
+        value: YOUR_PASSWORD_5
+      - key: LINISCO_EMAIL_6
+        value: 10019@linisco.com.ar
+      - key: LINISCO_PASSWORD_6
+        value: YOUR_PASSWORD_6
+      - key: LINISCO_EMAIL_7
+        value: 10020@linisco.com.ar
+      - key: LINISCO_PASSWORD_7
+        value: YOUR_PASSWORD_7
+
+databases:
+  - name: dash-db
+    plan: free
+    region: oregon

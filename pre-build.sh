@@ -23,6 +23,10 @@ cd server
 npm install --production
 echo "✅ Server dependencies installed"
 
+# Verificar configuración de base de datos
+echo "🔍 Checking database configuration..."
+node scripts/check-db-config.js
+
 # Ejecutar script de inicialización de datos ANTES del build
 echo "📊 Initializing data BEFORE build process..."
 echo "🔄 This will load ALL data for the current year from ALL stores..."
