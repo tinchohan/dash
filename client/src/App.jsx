@@ -99,7 +99,7 @@ function Login({ onLogged }) {
   )
 }
 
-function Filters({ fromDate, toDate, setFromDate, setToDate, storeIds, setStoreIds, stores }) {
+function Filters({ fromDate, toDate, setFromDate, setToDate, storeIds, setStoreIds, stores, onLoadHistorical }) {
   const selected = (storeIds || '').split(',').filter(Boolean)
   const toggle = (id) => {
     const set = new Set(selected)
@@ -370,7 +370,7 @@ export function App() {
           </div>
         </div>
       </nav>
-      <Filters {...{ fromDate, toDate, setFromDate, setToDate, storeIds, setStoreIds, stores }} />
+      <Filters {...{ fromDate, toDate, setFromDate, setToDate, storeIds, setStoreIds, stores, onLoadHistorical }} />
       
       
       {overview && (
