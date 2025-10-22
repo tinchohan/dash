@@ -7,14 +7,23 @@ import { getDb } from './db.js';
 
 export class DatabaseWrapper {
   constructor() {
-    this.db = getDb();
+    this.db = null;
     this.isPostgres = process.env.DATABASE_URL ? true : false;
+  }
+
+  // Lazy initialization of database connection
+  getDb() {
+    if (!this.db) {
+      this.db = getDb();
+    }
+    return this.db;
   }
 
   // Execute a query and return results
   async query(sql, params = []) {
+    const db = this.getDb();
     if (this.isPostgres) {
-      const client = await this.db.connect();
+      const client = await db.connect();
       try {
         const result = await client.query(sql, params);
         return result.rows;
@@ -23,7 +32,7 @@ export class DatabaseWrapper {
       }
     } else {
       // SQLite
-      const stmt = this.db.prepare(sql);
+      const stmt = db.prepare(sql);
       if (sql.trim().toUpperCase().startsWith('SELECT')) {
         return stmt.all(params);
       } else {
@@ -34,8 +43,9 @@ export class DatabaseWrapper {
 
   // Get a single row
   async get(sql, params = []) {
+    const db = this.getDb();
     if (this.isPostgres) {
-      const client = await this.db.connect();
+      const client = await db.connect();
       try {
         const result = await client.query(sql, params);
         return result.rows[0] || null;
@@ -44,15 +54,16 @@ export class DatabaseWrapper {
       }
     } else {
       // SQLite
-      const stmt = this.db.prepare(sql);
+      const stmt = db.prepare(sql);
       return stmt.get(params);
     }
   }
 
   // Execute a transaction
   async transaction(callback) {
+    const db = this.getDb();
     if (this.isPostgres) {
-      const client = await this.db.connect();
+      const client = await db.connect();
       try {
         await client.query('BEGIN');
         const result = await callback(client);
@@ -66,7 +77,7 @@ export class DatabaseWrapper {
       }
     } else {
       // SQLite
-      const tx = this.db.transaction(callback);
+      const tx = db.transaction(callback);
       return tx();
     }
   }
@@ -76,20 +87,22 @@ export class DatabaseWrapper {
     if (this.isPostgres) {
       throw new Error('prepare() is not available for PostgreSQL. Use query() instead.');
     }
-    return this.db.prepare(sql);
+    const db = this.getDb();
+    return db.prepare(sql);
   }
 
   // Execute raw SQL (for migrations, etc.)
   async exec(sql) {
+    const db = this.getDb();
     if (this.isPostgres) {
-      const client = await this.db.connect();
+      const client = await db.connect();
       try {
         await client.query(sql);
       } finally {
         client.release();
       }
     } else {
-      this.db.exec(sql);
+      db.exec(sql);
     }
   }
 }
