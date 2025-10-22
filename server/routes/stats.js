@@ -159,19 +159,24 @@ statsRouter.get('/top-products', requireAuth, async (req, res) => {
 // List distinct stores present in DB
 statsRouter.get('/stores', requireAuth, async (_req, res) => {
   try {
+    // Siempre devolver todas las tiendas configuradas, independientemente de si tienen datos
+    const allStores = ['63953', '66220', '72267', '30036', '30038', '10019', '10020'];
+    
+    // También obtener las tiendas que tienen datos en la base de datos
     const rows = await executeQuery('SELECT DISTINCT store_id FROM sale_orders WHERE store_id IS NOT NULL ORDER BY store_id');
+    const storesWithData = rows.map(r => String(r.store_id));
     
-    // Si no hay datos en la base de datos, usar tiendas hardcodeadas como respaldo
-    if (rows.length === 0) {
-      console.log('No stores found in database, using hardcoded stores');
-      res.json({ stores: ['63953', '66220', '72267', '30036', '30038', '10019', '10020'] });
-      return;
-    }
+    console.log(`📊 Stores with data: ${storesWithData.join(', ')}`);
+    console.log(`📊 All configured stores: ${allStores.join(', ')}`);
     
-    res.json({ stores: rows.map(r => r.store_id) });
+    // Combinar todas las tiendas (las que tienen datos + las configuradas)
+    const combinedStores = [...new Set([...allStores, ...storesWithData])].sort();
+    
+    res.json({ stores: combinedStores });
   } catch (error) {
     console.error('Error in stores endpoint:', error);
-    res.status(500).json({ error: error.message });
+    // En caso de error, devolver las tiendas hardcodeadas
+    res.json({ stores: ['63953', '66220', '72267', '30036', '30038', '10019', '10020'] });
   }
 });
 
