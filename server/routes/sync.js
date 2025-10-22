@@ -564,7 +564,66 @@ syncRouter.post('/validate', async (req, res) => {
   }
 });
 
+// Función para verificar si la base de datos está vacía y cargar datos del año
+async function checkAndLoadYearData() {
+  try {
+    const db = getDb();
+    
+    // Verificar si hay datos en la base de datos
+    const orderCount = db.prepare('SELECT COUNT(*) as count FROM sale_orders').get().count;
+    
+    if (orderCount === 0) {
+      console.log('📊 Base de datos vacía detectada. Cargando datos del año actual...');
+      
+      const currentYear = new Date().getFullYear();
+      const fromDate = `${currentYear}-01-01`;
+      const toDate = `${currentYear}-12-31`;
+      
+      console.log(`🔄 Cargando datos históricos del año ${currentYear} (${fromDate} a ${toDate})...`);
+      
+      const result = await performSync(fromDate, toDate, true);
+      
+      console.log(`✅ Carga automática del año ${currentYear} completada:`, {
+        accounts: result.results.length,
+        success: result.results.filter(r => r.ok).length
+      });
+      
+      return {
+        success: true,
+        year: currentYear,
+        fromDate,
+        toDate,
+        result
+      };
+    } else {
+      console.log(`ℹ️ Base de datos ya contiene ${orderCount} órdenes. No se requiere carga automática.`);
+      return {
+        success: true,
+        alreadyHasData: true,
+        orderCount
+      };
+    }
+  } catch (error) {
+    console.error('❌ Error en carga automática del año:', error.message);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+// Endpoint para verificar y cargar datos del año si es necesario
+syncRouter.post('/check-and-load-year', async (req, res) => {
+  try {
+    const result = await checkAndLoadYearData();
+    res.json(result);
+  } catch (error) {
+    console.error('Check and load year error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Exportar funciones para uso en index.js
-export { startHybridSync, performPolling, performLocalValidation };
+export { startHybridSync, performPolling, performLocalValidation, checkAndLoadYearData };
 
 

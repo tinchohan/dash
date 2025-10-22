@@ -6,7 +6,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { initDatabase } from './lib/db.js';
 import { authRouter } from './routes/auth.js';
-import { syncRouter, startHybridSync } from './routes/sync.js';
+import { syncRouter, startHybridSync, checkAndLoadYearData } from './routes/sync.js';
 import { statsRouter } from './routes/stats.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -96,9 +96,21 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log('Static files served from:', path.join(__dirname, 'public'));
   
   // Iniciar sistema híbrido después de que el servidor esté listo
-  setTimeout(() => {
+  setTimeout(async () => {
     try {
       console.log('🔄 Starting hybrid sync system...');
+      
+      // Primero verificar y cargar datos del año si es necesario
+      console.log('🔍 Checking if database needs initial data load...');
+      const yearLoadResult = await checkAndLoadYearData();
+      
+      if (yearLoadResult.success && !yearLoadResult.alreadyHasData) {
+        console.log(`✅ Initial year data loaded for ${yearLoadResult.year}`);
+      } else if (yearLoadResult.alreadyHasData) {
+        console.log(`ℹ️ Database already has ${yearLoadResult.orderCount} orders`);
+      }
+      
+      // Luego iniciar el sistema híbrido
       startHybridSync();
     } catch (error) {
       console.error('❌ Failed to start hybrid sync system:', error.message);

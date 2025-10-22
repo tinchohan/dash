@@ -99,7 +99,7 @@ function Login({ onLogged }) {
   )
 }
 
-function Filters({ fromDate, toDate, setFromDate, setToDate, storeIds, setStoreIds, onValidate, stores, onLoadHistorical, onCheckCoverage, loading }) {
+function Filters({ fromDate, toDate, setFromDate, setToDate, storeIds, setStoreIds, stores }) {
   const selected = (storeIds || '').split(',').filter(Boolean)
   const toggle = (id) => {
     const set = new Set(selected)
@@ -121,15 +121,6 @@ function Filters({ fromDate, toDate, setFromDate, setToDate, storeIds, setStoreI
           <label>Hasta</label>
           <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
         </div>
-        <button onClick={onValidate} className="btn btn-warning" title="Validar consistencia local (sin llamadas a API)">
-          Validar Localmente
-        </button>
-        <button onClick={onCheckCoverage} className="btn btn-info" disabled={loading} title="Verificar qué fechas están disponibles en la base de datos">
-          {loading ? 'Verificando...' : 'Verificar Cobertura'}
-        </button>
-        <button onClick={onLoadHistorical} className="btn btn-success" disabled={loading} title="Cargar datos históricos para el rango seleccionado">
-          {loading ? 'Cargando...' : 'Cargar Histórico'}
-        </button>
       </div>
       <div style={{ background: '#fff', padding: 12, borderRadius: 8, boxShadow: '0 1px 4px rgba(0,0,0,.06)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -194,8 +185,6 @@ export function App() {
   const [topPage, setTopPage] = useState(0)
   const [autoSyncStatus, setAutoSyncStatus] = useState(null)
   const [recentSales, setRecentSales] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [coverageInfo, setCoverageInfo] = useState(null)
 
   async function loadAll() {
     const qs = new URLSearchParams({ fromDate, toDate, storeIds }).toString()
@@ -247,62 +236,53 @@ export function App() {
     return () => clearInterval(interval)
   }, [logged])
 
-  const onValidate = async () => {
-    try {
-      // Validación local sin llamadas a API
-      console.log('🔍 Validating local data consistency...')
-      await api('/sync/validate', { method: 'POST' })
-      await loadAll() // Recargar datos después de la validación
-      console.log('✅ Local validation completed')
-    } catch (error) {
-      console.error('Validation error:', error)
+  // Verificar y cargar datos del año al loguearse
+  useEffect(() => {
+    if (!logged) return
+    
+    const checkAndLoadYear = async () => {
+      try {
+        console.log('🔍 Checking if database needs initial data load...')
+        const result = await api('/sync/check-and-load-year', { method: 'POST' })
+        
+        if (result.success && !result.alreadyHasData) {
+          console.log(`✅ Initial year data loaded for ${result.year}`)
+          // Recargar datos después de la carga inicial
+          await loadAll()
+        } else if (result.alreadyHasData) {
+          console.log(`ℹ️ Database already has ${result.orderCount} orders`)
+        }
+      } catch (error) {
+        console.error('Check and load year error:', error)
+      }
     }
-  }
+    
+    checkAndLoadYear()
+  }, [logged])
 
-  const onLoadHistorical = async () => {
-    setLoading(true)
-    try {
-      console.log(`🔄 Loading historical data from ${fromDate} to ${toDate}...`)
-      const result = await api('/sync/historical', {
-        method: 'POST',
-        body: JSON.stringify({ fromDate, toDate })
-      })
-      console.log('✅ Historical data loaded:', result)
-      
-      // Recargar datos después de la sincronización
-      await loadAll()
-      
-      // Mostrar mensaje de éxito
-      alert(`Datos históricos cargados exitosamente!\nPeríodo: ${fromDate} a ${toDate}\nResultado: ${JSON.stringify(result, null, 2)}`)
-    } catch (error) {
-      console.error('Historical load error:', error)
-      alert(`Error al cargar datos históricos: ${error.message}`)
-    } finally {
-      setLoading(false)
+  // Polling automático cada 5 minutos
+  useEffect(() => {
+    if (!logged) return
+    
+    const pollData = async () => {
+      try {
+        console.log('🔄 Auto-polling data...')
+        await api('/sync/poll', { method: 'POST' })
+        await loadAll() // Recargar datos después del polling
+        console.log('✅ Auto-polling completed')
+      } catch (error) {
+        console.error('Auto-polling error:', error)
+      }
     }
-  }
+    
+    // Polling inmediato al cargar
+    pollData()
+    
+    // Polling cada 5 minutos
+    const interval = setInterval(pollData, 5 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [logged, fromDate, toDate, storeIds])
 
-  const onCheckCoverage = async () => {
-    setLoading(true)
-    try {
-      console.log(`🔍 Checking data coverage from ${fromDate} to ${toDate}...`)
-      const coverage = await api(`/stats/date-coverage?fromDate=${fromDate}&toDate=${toDate}`)
-      setCoverageInfo(coverage)
-      console.log('📊 Coverage info:', coverage)
-      
-      // Mostrar información de cobertura
-      const message = coverage.hasData 
-        ? `✅ Datos disponibles en el rango seleccionado!\n\nÓrdenes: ${coverage.counts.orders}\nProductos: ${coverage.counts.products}\nFechas disponibles: ${coverage.availableDates.length}`
-        : `❌ No hay datos en el rango seleccionado (${fromDate} a ${toDate})\n\nPuedes usar "Cargar Histórico" para sincronizar datos para este período.`
-      
-      alert(message)
-    } catch (error) {
-      console.error('Coverage check error:', error)
-      alert(`Error al verificar cobertura: ${error.message}`)
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const onLogout = async () => {
     try { await api('/auth/logout', { method: 'POST' }) } catch {}
@@ -350,42 +330,8 @@ export function App() {
           </div>
         </div>
       </nav>
-      <Filters {...{ fromDate, toDate, setFromDate, setToDate, storeIds, setStoreIds, onValidate, stores, onLoadHistorical, onCheckCoverage, loading }} />
+      <Filters {...{ fromDate, toDate, setFromDate, setToDate, storeIds, setStoreIds, stores }} />
       
-      {coverageInfo && (
-        <div className="row g-3 my-1">
-          <div className="col-12">
-            <div className="card">
-              <div className="card-body">
-                <h5 className="card-title">📊 Información de Cobertura de Datos</h5>
-                <div className="row">
-                  <div className="col-md-6">
-                    <p><strong>Rango solicitado:</strong> {coverageInfo.requestedRange.fromDate} a {coverageInfo.requestedRange.toDate}</p>
-                    <p><strong>Estado:</strong> {coverageInfo.hasData ? '✅ Datos disponibles' : '❌ Sin datos'}</p>
-                  </div>
-                  <div className="col-md-6">
-                    <p><strong>Órdenes:</strong> {coverageInfo.counts.orders}</p>
-                    <p><strong>Productos:</strong> {coverageInfo.counts.products}</p>
-                    <p><strong>Fechas disponibles:</strong> {coverageInfo.availableDates.length}</p>
-                  </div>
-                </div>
-                {coverageInfo.availableDates.length > 0 && (
-                  <details className="mt-3">
-                    <summary>Ver fechas disponibles</summary>
-                    <div className="mt-2">
-                      {coverageInfo.availableDates.map((date, index) => (
-                        <span key={index} className="badge bg-secondary me-1 mb-1">
-                          {date.date} ({date.count} órdenes)
-                        </span>
-                      ))}
-                    </div>
-                  </details>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
       
       {overview && (
         <div className="row g-3 my-1">
