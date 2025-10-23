@@ -287,10 +287,13 @@ async function updateSyncState(email, updates) {
 }
 
 async function fetchEndpointSince(endpoint, email, token, sinceId) {
-  // Por ahora, usamos el mismo método pero podríamos optimizar
-  // para que la API externa soporte filtros por ID
-  const today = dayjs().format('YYYY-MM-DD');
-  return fetchEndpoint(endpoint, email, token, today, today);
+  // Buscar datos de los últimos 7 días para asegurar que no se pierdan datos
+  const today = dayjs();
+  const weekAgo = today.subtract(7, 'days');
+  
+  console.log(`🔍 Fetching ${endpoint} from ${weekAgo.format('YYYY-MM-DD')} to ${today.format('YYYY-MM-DD')} (since ID: ${sinceId})`);
+  
+  return fetchEndpoint(endpoint, email, token, weekAgo.format('YYYY-MM-DD'), today.format('YYYY-MM-DD'));
 }
 
 async function pollNewData(email, password) {
@@ -312,28 +315,43 @@ async function pollNewData(email, password) {
     let maxProductId = syncState.last_product_id;
     let maxSessionId = syncState.last_session_id;
     
-    // Procesar nuevas órdenes
+    // Procesar nuevas órdenes (filtrar por ID)
     if (Array.isArray(newOrders) && newOrders.length > 0) {
-      await insertOrders(newOrders, email);
-      maxOrderId = Math.max(maxOrderId, ...newOrders.map(o => o.idSaleOrder || o.id || 0));
-      hasNewData = true;
-      console.log(`📦 New orders: ${newOrders.length}`);
+      const filteredOrders = newOrders.filter(o => (o.idSaleOrder || o.id || 0) > syncState.last_order_id);
+      if (filteredOrders.length > 0) {
+        await insertOrders(filteredOrders, email);
+        maxOrderId = Math.max(maxOrderId, ...filteredOrders.map(o => o.idSaleOrder || o.id || 0));
+        hasNewData = true;
+        console.log(`📦 New orders: ${filteredOrders.length} (filtered from ${newOrders.length})`);
+      } else {
+        console.log(`📦 No new orders found (${newOrders.length} total, all <= ID ${syncState.last_order_id})`);
+      }
     }
     
-    // Procesar nuevos productos
+    // Procesar nuevos productos (filtrar por ID)
     if (Array.isArray(newProducts) && newProducts.length > 0) {
-      await insertProducts(newProducts, email);
-      maxProductId = Math.max(maxProductId, ...newProducts.map(p => p.idSaleProduct || p.id || 0));
-      hasNewData = true;
-      console.log(`🛍️ New products: ${newProducts.length}`);
+      const filteredProducts = newProducts.filter(p => (p.idSaleProduct || p.id || 0) > syncState.last_product_id);
+      if (filteredProducts.length > 0) {
+        await insertProducts(filteredProducts, email);
+        maxProductId = Math.max(maxProductId, ...filteredProducts.map(p => p.idSaleProduct || p.id || 0));
+        hasNewData = true;
+        console.log(`🛍️ New products: ${filteredProducts.length} (filtered from ${newProducts.length})`);
+      } else {
+        console.log(`🛍️ No new products found (${newProducts.length} total, all <= ID ${syncState.last_product_id})`);
+      }
     }
     
-    // Procesar nuevas sesiones
+    // Procesar nuevas sesiones (filtrar por ID)
     if (Array.isArray(newSessions) && newSessions.length > 0) {
-      await insertSessions(newSessions, email);
-      maxSessionId = Math.max(maxSessionId, ...newSessions.map(s => s.idSession || s.id || 0));
-      hasNewData = true;
-      console.log(`👥 New sessions: ${newSessions.length}`);
+      const filteredSessions = newSessions.filter(s => (s.idSession || s.id || 0) > syncState.last_session_id);
+      if (filteredSessions.length > 0) {
+        await insertSessions(filteredSessions, email);
+        maxSessionId = Math.max(maxSessionId, ...filteredSessions.map(s => s.idSession || s.id || 0));
+        hasNewData = true;
+        console.log(`👥 New sessions: ${filteredSessions.length} (filtered from ${newSessions.length})`);
+      } else {
+        console.log(`👥 No new sessions found (${newSessions.length} total, all <= ID ${syncState.last_session_id})`);
+      }
     }
     
     // Actualizar estado de sincronización
@@ -592,13 +610,19 @@ async function performLocalValidation() {
 
 // Endpoint para ver estado de auto-sync
 syncRouter.get('/status', (req, res) => {
+  // Usar zona horaria de Buenos Aires para las fechas
+  const now = new Date();
+  const buenosAiresTime = new Date(now.toLocaleString("en-US", {timeZone: "America/Argentina/Buenos_Aires"}));
+  
   res.json({
     pollingEnabled: !!pollingInterval,
     lastPoll: lastPoll,
     validationEnabled: !!autoSyncInterval,
     lastValidation: lastAutoSync,
-    nextPoll: pollingInterval ? new Date(Date.now() + 5 * 60 * 1000) : null,
-    nextValidation: autoSyncInterval ? new Date(Date.now() + 6 * 60 * 60 * 1000) : null
+    nextPoll: pollingInterval ? new Date(buenosAiresTime.getTime() + 5 * 60 * 1000) : null,
+    nextValidation: autoSyncInterval ? new Date(buenosAiresTime.getTime() + 6 * 60 * 60 * 1000) : null,
+    currentTime: buenosAiresTime.toISOString(),
+    timezone: 'America/Argentina/Buenos_Aires'
   });
 });
 
