@@ -233,11 +233,16 @@ export function App() {
   useEffect(() => {
     if (!logged) return
     const loadAutoSyncStatus = () => {
+      console.log('📊 Loading auto-sync status...')
       api('/sync/status').then(setAutoSyncStatus).catch(() => {})
     }
     loadAutoSyncStatus()
-    const interval = setInterval(loadAutoSyncStatus, 30000) // Cada 30 segundos
-    return () => clearInterval(interval)
+    const interval = setInterval(loadAutoSyncStatus, 5 * 60 * 1000) // Cada 5 minutos (reducido de 30 segundos)
+    console.log('🔄 Auto-sync status interval started (every 5 minutes)')
+    return () => {
+      console.log('🛑 Auto-sync status interval cleared')
+      clearInterval(interval)
+    }
   }, [logged])
 
   // Los datos ya fueron cargados durante el build process
@@ -275,7 +280,11 @@ export function App() {
     
     // Polling cada 30 minutos
     const interval = setInterval(pollData, 30 * 60 * 1000)
-    return () => clearInterval(interval)
+    console.log('🔄 Main polling interval started (every 30 minutes)')
+    return () => {
+      console.log('🛑 Main polling interval cleared')
+      clearInterval(interval)
+    }
   }, [logged]) // Solo depende de logged, no de fechas
 
 
