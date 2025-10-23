@@ -99,7 +99,7 @@ function Login({ onLogged }) {
   )
 }
 
-function Filters({ fromDate, toDate, setFromDate, setToDate, storeIds, setStoreIds, stores, onLoadHistorical, onUpdateDashboard, isLoading }) {
+function Filters({ fromDate, toDate, setFromDate, setToDate, storeIds, setStoreIds, stores, onLoadHistorical, onUpdateDashboard, onDiagnoseStore, isLoading }) {
   const selected = (storeIds || '').split(',').filter(Boolean)
   const toggle = (id) => {
     const set = new Set(selected)
@@ -132,6 +132,9 @@ function Filters({ fromDate, toDate, setFromDate, setToDate, storeIds, setStoreI
           </button>
           <button onClick={onLoadHistorical} className="btn btn-primary" title="Cargar datos históricos con fechas personalizadas (evita duplicados y órdenes negativas)">
             📊 Cargar Histórico Personalizado
+          </button>
+          <button onClick={onDiagnoseStore} className="btn btn-info" title="Diagnosticar una tienda específica y verificar disponibilidad de datos">
+            🔍 Diagnosticar Tienda
           </button>
         </div>
       </div>
@@ -312,6 +315,79 @@ export function App() {
     console.log('✅ Dashboard updated successfully')
   }
 
+  const onDiagnoseStore = async () => {
+    const storeId = prompt('ID de la tienda a diagnosticar:', '10019')
+    if (!storeId) return
+    
+    const fromDate = prompt('Fecha de inicio (YYYY-MM-DD) - opcional:', '2024-04-01')
+    const toDate = prompt('Fecha de fin (YYYY-MM-DD) - opcional:', '2024-09-30')
+    
+    try {
+      setLoading(true)
+      
+      let url = `${API}/api/stats/store-diagnosis/${storeId}`
+      if (fromDate && toDate) {
+        url += `?fromDate=${fromDate}&toDate=${toDate}`
+      }
+      
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${response.statusText}`)
+      }
+      
+      const data = await response.json()
+      
+      // Mostrar diagnóstico en una ventana emergente
+      let message = `🏪 Diagnóstico de Tienda ${storeId}\n\n`
+      
+      if (!data.exists) {
+        message += `❌ La tienda no existe en la base de datos\n\n`
+        message += `💡 Recomendaciones:\n`
+        data.recommendations.forEach(rec => {
+          message += `• ${rec}\n`
+        })
+      } else {
+        message += `✅ Tienda encontrada en la base de datos\n\n`
+        message += `📊 Estadísticas generales:\n`
+        message += `• Total de órdenes: ${data.generalStats.totalOrders}\n`
+        message += `• Monto total: ${fmt.format(data.generalStats.totalAmount)}\n`
+        message += `• Primera orden: ${data.generalStats.earliestOrder}\n`
+        message += `• Última orden: ${data.generalStats.latestOrder}\n\n`
+        
+        if (data.dateRangeStats) {
+          message += `📅 Datos en el rango especificado (${fromDate} a ${toDate}):\n`
+          if (data.dateRangeStats.ordersInRange > 0) {
+            message += `• Órdenes: ${data.dateRangeStats.ordersInRange}\n`
+            message += `• Monto: ${fmt.format(data.dateRangeStats.amountInRange)}\n`
+            message += `• Primera orden en rango: ${data.dateRangeStats.earliestInRange}\n`
+            message += `• Última orden en rango: ${data.dateRangeStats.latestInRange}\n`
+          } else {
+            message += `❌ No hay datos en el rango especificado\n`
+          }
+        }
+        
+        message += `\n📅 Fechas disponibles: ${data.totalAvailableDates}\n`
+        if (data.availableDates.length > 0) {
+          message += `Primeras fechas con datos:\n`
+          data.availableDates.slice(0, 5).forEach(date => {
+            message += `• ${date.date}: ${date.count} órdenes\n`
+          })
+        }
+      }
+      
+      alert(message)
+      
+    } catch (error) {
+      console.error('Error diagnosing store:', error)
+      alert(`❌ Error al diagnosticar la tienda: ${error.message}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const onLoadHistorical = async () => {
     // Mostrar modal para seleccionar fechas
     const fromDate = prompt('Fecha de inicio (YYYY-MM-DD):', '2024-01-01')
@@ -413,7 +489,7 @@ export function App() {
           </div>
         </div>
       </nav>
-      <Filters {...{ fromDate, toDate, setFromDate, setToDate, storeIds, setStoreIds, stores, onLoadHistorical, onUpdateDashboard, isLoading }} />
+      <Filters {...{ fromDate, toDate, setFromDate, setToDate, storeIds, setStoreIds, stores, onLoadHistorical, onUpdateDashboard, onDiagnoseStore, isLoading }} />
       
       
       {overview && (
@@ -429,8 +505,21 @@ export function App() {
           <div className="col-12 col-sm-6 col-lg-4">
             <div className="card">
               <div className="card-body">
-                <div className="text-muted" style={{ fontSize: 12 }}>Total</div>
+                <div className="text-muted" style={{ fontSize: 12 }}>Total del Período</div>
                 <div className="fw-bold" style={{ fontSize: 28 }}>{fmt.format(overview.totalAmount || 0)}</div>
+                {overview.totalOrders > 0 && (
+                  <div className="mt-2">
+                    <div className="text-muted" style={{ fontSize: 11 }}>
+                      Promedio diario: {fmt.format((overview.totalAmount || 0) / Math.max(1, daily?.length || 1))}
+                    </div>
+                    <div className="text-muted" style={{ fontSize: 11 }}>
+                      Ticket promedio: {fmt.format((overview.totalAmount || 0) / (overview.totalOrders || 1))}
+                    </div>
+                    <div className="text-muted" style={{ fontSize: 11 }}>
+                      Días con ventas: {daily?.length || 0}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

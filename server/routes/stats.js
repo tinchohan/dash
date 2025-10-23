@@ -94,18 +94,26 @@ statsRouter.get('/overview', requireAuth, async (req, res) => {
     const totalOrders = await executeQuerySingle(`SELECT COUNT(*) as c, SUM(total_amount) as total FROM sale_orders ${sql}`, params);
     const byPayment = await executeQuery(`SELECT payment_method as method, COUNT(*) as c, IFNULL(SUM(total_amount),0) as total FROM sale_orders ${sql} GROUP BY payment_method`, params);
 
-  // Group payment methods into Efectivo, Apps, Otros
+  // Group payment methods into Efectivo, Apps, Mercado Pago, Otros
   const groups = {
     Efectivo: new Set(['cash', 'cc_pedidosyaft']),
     Apps: new Set(['cc_rappiol', 'cc_pedidosyaol']),
+    'Mercado Pago': new Set(['cc_argencard', 'cc_mcdebit']),
   };
-  const grouped = { Efectivo: { group: 'Efectivo', count: 0, total: 0 }, Apps: { group: 'Apps', count: 0, total: 0 }, Otros: { group: 'Otros', count: 0, total: 0 } };
+  const grouped = { 
+    Efectivo: { group: 'Efectivo', count: 0, total: 0 }, 
+    Apps: { group: 'Apps', count: 0, total: 0 }, 
+    'Mercado Pago': { group: 'Mercado Pago', count: 0, total: 0 },
+    Otros: { group: 'Otros', count: 0, total: 0 } 
+  };
   for (const row of byPayment) {
     const method = String(row.method || 'unknown').toLowerCase().trim();
     const target = groups.Efectivo.has(method)
       ? 'Efectivo'
       : groups.Apps.has(method)
       ? 'Apps'
+      : groups['Mercado Pago'].has(method)
+      ? 'Mercado Pago'
       : 'Otros';
     grouped[target].count += Number(row.c || 0);
     grouped[target].total += Number(row.total || 0);
@@ -115,7 +123,7 @@ statsRouter.get('/overview', requireAuth, async (req, res) => {
       totalOrders: totalOrders.c || 0,
       totalAmount: totalOrders.total || 0,
       paymentMethods: byPayment,
-      paymentGroups: [grouped.Efectivo, grouped.Apps, grouped.Otros],
+      paymentGroups: [grouped.Efectivo, grouped.Apps, grouped['Mercado Pago'], grouped.Otros],
     });
   } catch (error) {
     console.error('Error in overview endpoint:', error);
@@ -292,36 +300,50 @@ statsRouter.get('/debug/stats', requireAuth, (req, res) => {
 });
 
 // Verificar disponibilidad de fechas en la base de datos
-statsRouter.get('/date-coverage', requireAuth, (req, res) => {
-  const db = getDb();
+statsRouter.get('/date-coverage', requireAuth, async (req, res) => {
   try {
-    const { fromDate, toDate } = req.query;
+    const { fromDate, toDate, storeIds } = req.query;
     
     if (!fromDate || !toDate) {
       return res.status(400).json({ error: 'fromDate and toDate are required' });
     }
     
+    // Construir WHERE clause con filtros opcionales
+    const { sql, params } = whereAndParams({ fromDate, toDate, storeIds });
+    
     // Verificar si hay datos en el rango especificado
-    const orderCount = db.prepare(`
+    const orderCount = await executeQuerySingle(`
       SELECT COUNT(*) as count 
       FROM sale_orders 
-      WHERE date(created_at) >= date(@fromDate) AND date(created_at) <= date(@toDate)
-    `).get({ fromDate, toDate });
+      ${sql}
+    `, params);
     
-    const productCount = db.prepare(`
+    const productCount = await executeQuerySingle(`
       SELECT COUNT(*) as count 
       FROM sale_products 
-      WHERE date(created_at) >= date(@fromDate) AND date(created_at) <= date(@toDate)
-    `).get({ fromDate, toDate });
+      ${sql}
+    `, params);
     
     // Obtener fechas disponibles en el rango
-    const availableDates = db.prepare(`
+    const availableDates = await executeQuery(`
       SELECT DISTINCT date(created_at) as date, COUNT(*) as count
       FROM sale_orders 
-      WHERE date(created_at) >= date(@fromDate) AND date(created_at) <= date(@toDate)
+      ${sql}
       GROUP BY date(created_at)
       ORDER BY date(created_at)
-    `).all({ fromDate, toDate });
+    `, params);
+    
+    // Obtener estadísticas por tienda si se especificó storeIds
+    let storeStats = null;
+    if (storeIds) {
+      storeStats = await executeQuery(`
+        SELECT store_id, COUNT(*) as count, SUM(total_amount) as total
+        FROM sale_orders 
+        ${sql}
+        GROUP BY store_id
+        ORDER BY count DESC
+      `, params);
+    }
     
     res.json({
       hasData: orderCount.count > 0,
@@ -330,9 +352,96 @@ statsRouter.get('/date-coverage', requireAuth, (req, res) => {
         products: productCount.count
       },
       availableDates,
-      requestedRange: { fromDate, toDate }
+      storeStats,
+      requestedRange: { fromDate, toDate, storeIds }
     });
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Endpoint específico para diagnosticar una tienda
+statsRouter.get('/store-diagnosis/:storeId', requireAuth, async (req, res) => {
+  try {
+    const { storeId } = req.params;
+    const { fromDate, toDate } = req.query;
+    
+    if (!storeId) {
+      return res.status(400).json({ error: 'storeId is required' });
+    }
+    
+    // Verificar si la tienda existe
+    const storeExists = await executeQuerySingle(`
+      SELECT COUNT(*) as count 
+      FROM sale_orders 
+      WHERE store_id = @storeId
+    `, { storeId: Number(storeId) });
+    
+    if (storeExists.count === 0) {
+      return res.json({
+        storeId: Number(storeId),
+        exists: false,
+        message: 'Store not found in database',
+        recommendations: [
+          'Check if the store ID is correct',
+          'Verify if historical data sync has been performed for this store',
+          'Check if the store account is properly configured'
+        ]
+      });
+    }
+    
+    // Obtener estadísticas generales de la tienda
+    const storeStats = await executeQuerySingle(`
+      SELECT 
+        COUNT(*) as totalOrders,
+        SUM(total_amount) as totalAmount,
+        MIN(created_at) as earliestOrder,
+        MAX(created_at) as latestOrder
+      FROM sale_orders 
+      WHERE store_id = @storeId
+    `, { storeId: Number(storeId) });
+    
+    // Si se especifican fechas, verificar datos en ese rango
+    let dateRangeStats = null;
+    if (fromDate && toDate) {
+      dateRangeStats = await executeQuerySingle(`
+        SELECT 
+          COUNT(*) as ordersInRange,
+          SUM(total_amount) as amountInRange,
+          MIN(created_at) as earliestInRange,
+          MAX(created_at) as latestInRange
+        FROM sale_orders 
+        WHERE store_id = @storeId 
+        AND date(created_at) >= @fromDate 
+        AND date(created_at) <= @toDate
+      `, { 
+        storeId: Number(storeId), 
+        fromDate: dayjs(fromDate).format('YYYY-MM-DD'), 
+        toDate: dayjs(toDate).format('YYYY-MM-DD') 
+      });
+    }
+    
+    // Obtener fechas disponibles para la tienda
+    const availableDates = await executeQuery(`
+      SELECT DISTINCT date(created_at) as date, COUNT(*) as count
+      FROM sale_orders 
+      WHERE store_id = @storeId
+      GROUP BY date(created_at)
+      ORDER BY date(created_at)
+    `, { storeId: Number(storeId) });
+    
+    res.json({
+      storeId: Number(storeId),
+      exists: true,
+      generalStats: storeStats,
+      dateRangeStats,
+      availableDates: availableDates.slice(0, 20), // Primeras 20 fechas
+      totalAvailableDates: availableDates.length,
+      requestedRange: fromDate && toDate ? { fromDate, toDate } : null
+    });
+    
+  } catch (error) {
+    console.error('Error in store diagnosis:', error);
     res.status(500).json({ error: error.message });
   }
 });
