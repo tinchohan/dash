@@ -629,8 +629,13 @@ syncRouter.get('/status', (req, res) => {
 // Endpoint para polling manual
 syncRouter.post('/poll', async (req, res) => {
   try {
+    console.log('🔄 Manual polling endpoint called');
+    
     const accounts = getAccountsFromEnv();
+    console.log(`📊 Found ${accounts.length} accounts configured`);
+    
     if (accounts.length === 0) {
+      console.log('❌ No accounts configured');
       return res.status(400).json({ error: 'No hay cuentas configuradas' });
     }
 
@@ -638,12 +643,27 @@ syncRouter.post('/poll', async (req, res) => {
     const results = [];
     
     for (const { email, password } of accounts) {
-      const result = await pollNewData(email, password);
-      results.push(result);
+      console.log(`🔄 Processing account: ${email}`);
+      try {
+        const result = await pollNewData(email, password);
+        results.push(result);
+        console.log(`✅ Account ${email} processed:`, result);
+      } catch (accountError) {
+        console.error(`❌ Error processing account ${email}:`, accountError);
+        results.push({
+          email,
+          success: false,
+          error: accountError.message,
+          hasNewData: false,
+          counts: { orders: 0, products: 0, sessions: 0 }
+        });
+      }
     }
     
     const hasNewData = results.some(r => r.hasNewData);
     const successCount = results.filter(r => r.success).length;
+    
+    console.log(`📊 Polling completed: ${successCount}/${accounts.length} accounts successful, hasNewData: ${hasNewData}`);
     
     res.json({
       ok: true,
@@ -653,7 +673,7 @@ syncRouter.post('/poll', async (req, res) => {
       results
     });
   } catch (error) {
-    console.error('Polling error:', error);
+    console.error('❌ Polling endpoint error:', error);
     res.status(500).json({ error: error.message });
   }
 });
