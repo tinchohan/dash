@@ -263,8 +263,8 @@ export function App() {
     // Polling inmediato al cargar
     pollData()
     
-    // Polling cada 5 minutos
-    const interval = setInterval(pollData, 5 * 60 * 1000)
+    // Polling cada 15 minutos
+    const interval = setInterval(pollData, 15 * 60 * 1000)
     return () => clearInterval(interval)
   }, [logged, fromDate, toDate, storeIds])
 
