@@ -97,7 +97,9 @@ app.get('/debug/routes', (req, res) => {
       'GET /stats/daily',
       'GET /stats/top-products',
       'GET /stats/stores',
-      'GET /stats/recent-sales'
+      'GET /stats/recent-sales',
+      'GET /stats/store-diagnosis/:storeId',
+      'GET /stats/date-coverage'
     ]
   });
 });

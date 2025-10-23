@@ -342,10 +342,14 @@ export function App() {
       })
       
       if (!response.ok) {
+        const errorText = await response.text()
+        console.error('❌ API Error:', response.status, response.statusText)
+        console.error('❌ Response body:', errorText)
         throw new Error(`Error ${response.status}: ${response.statusText}`)
       }
       
       const data = await response.json()
+      console.log('📊 Diagnosis response:', data)
       
       // Mostrar diagnóstico en una ventana emergente
       let message = `🏪 Diagnóstico de Tienda ${storeId}\n\n`

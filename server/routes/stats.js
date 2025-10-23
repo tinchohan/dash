@@ -360,6 +360,11 @@ statsRouter.get('/date-coverage', requireAuth, async (req, res) => {
   }
 });
 
+// Endpoint de prueba simple
+statsRouter.get('/test', (req, res) => {
+  res.json({ message: 'Stats router is working!', timestamp: new Date().toISOString() });
+});
+
 // Endpoint específico para diagnosticar una tienda
 statsRouter.get('/store-diagnosis/:storeId', requireAuth, async (req, res) => {
   try {
