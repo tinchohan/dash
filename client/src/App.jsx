@@ -319,11 +319,11 @@ export function App() {
     const storeId = prompt('ID de la tienda a diagnosticar:', '10019')
     if (!storeId) return
     
-    const fromDate = prompt('Fecha de inicio (YYYY-MM-DD) - opcional:', '2024-04-01')
-    const toDate = prompt('Fecha de fin (YYYY-MM-DD) - opcional:', '2024-09-30')
+    const fromDate = prompt('Fecha de inicio (YYYY-MM-DD) - opcional:', '2025-04-01')
+    const toDate = prompt('Fecha de fin (YYYY-MM-DD) - opcional:', '2025-09-01')
     
     try {
-      setLoading(true)
+      setIsLoading(true)
       
       let url = `${API}/api/stats/store-diagnosis/${storeId}`
       if (fromDate && toDate) {
@@ -331,7 +331,7 @@ export function App() {
       }
       
       const response = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       })
       
       if (!response.ok) {
@@ -384,7 +384,7 @@ export function App() {
       console.error('Error diagnosing store:', error)
       alert(`❌ Error al diagnosticar la tienda: ${error.message}`)
     } finally {
-      setLoading(false)
+      setIsLoading(false)
     }
   }
 
