@@ -118,15 +118,23 @@ async function insertOrders(rows, email) {
 async function insertProducts(rows, email) {
   const isPostgres = process.env.DATABASE_URL ? true : false;
   
+  console.log(`🛍️ Processing ${rows?.length || 0} products for ${email}`);
+  
   await dbWrapper.transaction(async (db) => {
+    let processedCount = 0;
+    let skippedCount = 0;
+    
     for (const r of rows || []) {
       const totalAmount = r.total_amount || r.total || r.amount || ((r.salePrice || 0) * (r.quantity || 1));
       
       // Filtrar productos con total negativo (devoluciones, cancelaciones, etc.)
       if (totalAmount < 0) {
-        console.log(`Skipping product ${r.idSaleProduct || r.id} with negative total: ${totalAmount}`);
+        console.log(`⚠️ Skipping product ${r.idSaleProduct || r.id} with negative total: ${totalAmount} for ${email}`);
+        skippedCount++;
         continue;
       }
+      
+      processedCount++;
       
       const productData = {
         id: r.idSaleProduct || r.id,
@@ -163,6 +171,8 @@ async function insertProducts(rows, email) {
         insert.run(productData);
       }
     }
+    
+    console.log(`✅ Products processed for ${email}: ${processedCount} inserted, ${skippedCount} skipped`);
   });
 
   // Backfill created_at from sale_orders when missing
@@ -412,6 +422,14 @@ async function performSync(fromDate, toDate, isAutoSync = false) {
         fetchEndpoint('/sale_products', email, token, from, to),
         fetchEndpoint('/psessions', email, token, from, to)
       ]);
+      
+      // Logging específico para tienda 63953
+      if (email.includes('63953')) {
+        console.log(`🔍 DEBUG 63953 - Orders: ${orders?.length || 0}, Products: ${products?.length || 0}, Sessions: ${sessions?.length || 0}`);
+        if (products && products.length > 0) {
+          console.log(`🔍 DEBUG 63953 - First product sample:`, JSON.stringify(products[0], null, 2));
+        }
+      }
       
       // Save to database
       await insertOrders(orders, email);
