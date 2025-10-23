@@ -229,20 +229,15 @@ export function App() {
     api('/stats/stores').then((res) => setStores(res.stores || [])).catch(() => {})
   }, [logged])
 
-  // Cargar estado del auto-sync
+  // Cargar estado del auto-sync solo al inicio
   useEffect(() => {
     if (!logged) return
     const loadAutoSyncStatus = () => {
       console.log('📊 Loading auto-sync status...')
       api('/sync/status').then(setAutoSyncStatus).catch(() => {})
     }
-    loadAutoSyncStatus()
-    const interval = setInterval(loadAutoSyncStatus, 5 * 60 * 1000) // Cada 5 minutos (reducido de 30 segundos)
-    console.log('🔄 Auto-sync status interval started (every 5 minutes)')
-    return () => {
-      console.log('🛑 Auto-sync status interval cleared')
-      clearInterval(interval)
-    }
+    loadAutoSyncStatus() // Solo al inicio, no hay intervalo separado
+    console.log('📊 Auto-sync status loaded once on login')
   }, [logged])
 
   // Los datos ya fueron cargados durante el build process
@@ -267,6 +262,12 @@ export function App() {
         console.log('🔄 Auto-polling data...')
         await api('/sync/poll', { method: 'POST' })
         await loadAll() // Recargar datos después del polling
+        
+        // Actualizar status después del polling
+        console.log('📊 Updating auto-sync status...')
+        const status = await api('/sync/status')
+        setAutoSyncStatus(status)
+        
         console.log('✅ Auto-polling completed')
       } catch (error) {
         console.error('Auto-polling error:', error)
@@ -278,11 +279,11 @@ export function App() {
     // Polling inmediato al cargar
     pollData()
     
-    // Polling cada 30 minutos
+    // Polling cada 30 minutos (incluye status update)
     const interval = setInterval(pollData, 30 * 60 * 1000)
-    console.log('🔄 Main polling interval started (every 30 minutes)')
+    console.log('🔄 Single polling interval started (every 30 minutes) - includes data + status')
     return () => {
-      console.log('🛑 Main polling interval cleared')
+      console.log('🛑 Single polling interval cleared')
       clearInterval(interval)
     }
   }, [logged]) // Solo depende de logged, no de fechas
