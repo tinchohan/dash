@@ -308,7 +308,7 @@ async function fetchEndpointSince(endpoint, email, token, sinceId) {
 
 async function pollNewData(email, password) {
   try {
-    console.log(`🔍 Polling new data for ${email}...`);
+    console.log(`🔄 AUTO POLLING new data for ${email}...`);
     const db = getDb();
     const token = await login(email, password);
     const syncState = await getSyncState(email);
@@ -397,7 +397,7 @@ async function pollNewData(email, password) {
 
 // Función reutilizable para sincronización
 async function performSync(fromDate, toDate, isAutoSync = false) {
-  console.log(`${isAutoSync ? 'Auto' : 'Manual'} sync called:`, { fromDate, toDate });
+  console.log(`🔄 ${isAutoSync ? 'AUTO' : 'MANUAL'} SYNC called:`, { fromDate, toDate });
   const from = parseDateStr(fromDate || dayjs().format('YYYY-MM-DD'));
   const to = parseDateStr(toDate || dayjs().format('YYYY-MM-DD'));
   const accounts = getAccountsFromEnv();
@@ -416,7 +416,7 @@ async function performSync(fromDate, toDate, isAutoSync = false) {
       console.log(`Logging in ${email}...`);
       const token = await login(email, password);
       
-      console.log(`Fetching data for ${email}...`);
+      console.log(`📊 MANUAL SYNC - Fetching data for ${email} from ${from} to ${to}...`);
       const [orders, products, sessions] = await Promise.all([
         fetchEndpoint('/sale_orders', email, token, from, to),
         fetchEndpoint('/sale_products', email, token, from, to),
