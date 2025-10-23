@@ -188,6 +188,7 @@ export function App() {
   const [topPage, setTopPage] = useState(0)
   const [autoSyncStatus, setAutoSyncStatus] = useState(null)
   const [recentSales, setRecentSales] = useState([])
+  const [isPolling, setIsPolling] = useState(false)
 
   async function loadAll() {
     const qs = new URLSearchParams({ fromDate, toDate, storeIds }).toString()
@@ -245,18 +246,27 @@ export function App() {
     console.log('ℹ️ Data initialization was completed during build process')
   }, [logged])
 
-  // Polling automático cada 5 minutos
+  // Polling automático cada 15 minutos (solo cuando está logged)
   useEffect(() => {
     if (!logged) return
     
     const pollData = async () => {
+      // Evitar múltiples polls simultáneos
+      if (isPolling) {
+        console.log('⏸️ Polling already in progress, skipping...')
+        return
+      }
+      
       try {
+        setIsPolling(true)
         console.log('🔄 Auto-polling data...')
         await api('/sync/poll', { method: 'POST' })
         await loadAll() // Recargar datos después del polling
         console.log('✅ Auto-polling completed')
       } catch (error) {
         console.error('Auto-polling error:', error)
+      } finally {
+        setIsPolling(false)
       }
     }
     
@@ -266,7 +276,7 @@ export function App() {
     // Polling cada 15 minutos
     const interval = setInterval(pollData, 15 * 60 * 1000)
     return () => clearInterval(interval)
-  }, [logged, fromDate, toDate, storeIds])
+  }, [logged]) // Solo depende de logged, no de fechas
 
 
   const onLoadHistorical = async () => {
