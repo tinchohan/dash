@@ -246,7 +246,14 @@ export function App() {
 
   useEffect(() => {
     if (!logged) return
-    api('/stats/stores').then((res) => setStores(res.stores || [])).catch(() => {})
+    api('/stats/stores').then((res) => {
+      console.log('📊 Stores loaded:', res)
+      setStores(res.stores || [])
+    }).catch((error) => {
+      console.error('❌ Error loading stores:', error)
+      // Fallback a tiendas hardcodeadas si falla la API
+      setStores(['63953', '66220', '72267', '30036', '30038', '10019', '10020'])
+    })
   }, [logged])
 
   // Cargar estado del auto-sync solo al inicio
