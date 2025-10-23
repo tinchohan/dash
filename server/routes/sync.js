@@ -147,6 +147,19 @@ async function insertProducts(rows, email) {
         total_amount: totalAmount,
         raw: JSON.stringify(r)
       };
+      
+      // Logging detallado para tienda 63953
+      if (email.includes('63953') && processedCount < 3) {
+        console.log(`🔍 DEBUG 63953 - Product mapping:`, {
+          original: r,
+          mapped: productData,
+          order_id_sources: {
+            'r.order_id': r.order_id,
+            'r.orderId': r.orderId,
+            'r.idSaleOrder': r.idSaleOrder
+          }
+        });
+      }
 
       if (isPostgres) {
         await db.query(`
@@ -426,6 +439,9 @@ async function performSync(fromDate, toDate, isAutoSync = false) {
       // Logging específico para tienda 63953
       if (email.includes('63953')) {
         console.log(`🔍 DEBUG 63953 - Orders: ${orders?.length || 0}, Products: ${products?.length || 0}, Sessions: ${sessions?.length || 0}`);
+        if (orders && orders.length > 0) {
+          console.log(`🔍 DEBUG 63953 - First order sample:`, JSON.stringify(orders[0], null, 2));
+        }
         if (products && products.length > 0) {
           console.log(`🔍 DEBUG 63953 - First product sample:`, JSON.stringify(products[0], null, 2));
         }
