@@ -99,7 +99,7 @@ function Login({ onLogged }) {
   )
 }
 
-function Filters({ fromDate, toDate, setFromDate, setToDate, storeIds, setStoreIds, stores, onLoadHistorical }) {
+function Filters({ fromDate, toDate, setFromDate, setToDate, storeIds, setStoreIds, stores, onLoadHistorical, onUpdateDashboard, isLoading }) {
   const selected = (storeIds || '').split(',').filter(Boolean)
   const toggle = (id) => {
     const set = new Set(selected)
@@ -121,9 +121,19 @@ function Filters({ fromDate, toDate, setFromDate, setToDate, storeIds, setStoreI
           <label>Hasta</label>
           <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
         </div>
-        <button onClick={onLoadHistorical} className="btn btn-primary" title="Cargar datos históricos con fechas personalizadas (evita duplicados y órdenes negativas)">
-          📊 Cargar Histórico Personalizado
-        </button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button 
+            onClick={onUpdateDashboard} 
+            disabled={isLoading}
+            className="btn btn-success" 
+            title="Actualizar dashboard con los filtros actuales"
+          >
+            {isLoading ? '⏳ Actualizando...' : '🔄 Actualizar Dashboard'}
+          </button>
+          <button onClick={onLoadHistorical} className="btn btn-primary" title="Cargar datos históricos con fechas personalizadas (evita duplicados y órdenes negativas)">
+            📊 Cargar Histórico Personalizado
+          </button>
+        </div>
       </div>
       <div style={{ background: '#fff', padding: 12, borderRadius: 8, boxShadow: '0 1px 4px rgba(0,0,0,.06)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -189,27 +199,34 @@ export function App() {
   const [autoSyncStatus, setAutoSyncStatus] = useState(null)
   const [recentSales, setRecentSales] = useState([])
   const [isPolling, setIsPolling] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
 
   async function loadAll() {
-    const qs = new URLSearchParams({ fromDate, toDate, storeIds }).toString()
-    const recentQs = new URLSearchParams({ storeIds }).toString()
-    const [ov, bs, dy, tp, rs] = await Promise.all([
-      api(`/stats/overview?${qs}`),
-      api(`/stats/by-store?${qs}`),
-      api(`/stats/daily?${qs}`),
-      api(`/stats/top-products?${qs}`),
-      api(`/stats/recent-sales?${recentQs}`), // Sin filtros de fecha para mostrar las más recientes
-    ])
-    setOverview(ov)
-    setByStore(bs.stores)
-    setDaily(dy.days)
-    setTopProducts(tp.products)
-    setRecentSales(rs.recentSales)
+    setIsLoading(true)
+    try {
+      const qs = new URLSearchParams({ fromDate, toDate, storeIds }).toString()
+      const recentQs = new URLSearchParams({ storeIds }).toString()
+      const [ov, bs, dy, tp, rs] = await Promise.all([
+        api(`/stats/overview?${qs}`),
+        api(`/stats/by-store?${qs}`),
+        api(`/stats/daily?${qs}`),
+        api(`/stats/top-products?${qs}`),
+        api(`/stats/recent-sales?${recentQs}`), // Sin filtros de fecha para mostrar las más recientes
+      ])
+      setOverview(ov)
+      setByStore(bs.stores)
+      setDaily(dy.days)
+      setTopProducts(tp.products)
+      setRecentSales(rs.recentSales)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
+  // Cargar datos solo al hacer login (no automáticamente al cambiar filtros)
   useEffect(() => {
     if (logged) loadAll()
-  }, [logged, fromDate, toDate, storeIds])
+  }, [logged]) // Solo depende de logged, no de filtros
 
   useEffect(() => {
     try {
@@ -288,6 +305,12 @@ export function App() {
     }
   }, [logged]) // Solo depende de logged, no de fechas
 
+
+  const onUpdateDashboard = async () => {
+    console.log('🔄 Manual dashboard update requested')
+    await loadAll()
+    console.log('✅ Dashboard updated successfully')
+  }
 
   const onLoadHistorical = async () => {
     // Mostrar modal para seleccionar fechas
@@ -390,7 +413,7 @@ export function App() {
           </div>
         </div>
       </nav>
-      <Filters {...{ fromDate, toDate, setFromDate, setToDate, storeIds, setStoreIds, stores, onLoadHistorical }} />
+      <Filters {...{ fromDate, toDate, setFromDate, setToDate, storeIds, setStoreIds, stores, onLoadHistorical, onUpdateDashboard, isLoading }} />
       
       
       {overview && (
