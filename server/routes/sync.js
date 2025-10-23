@@ -759,10 +759,14 @@ syncRouter.post('/check-and-load-year', async (req, res) => {
 // Endpoint para cargar datos históricos manualmente
 syncRouter.post('/load-historical', requireAuth, async (req, res) => {
   try {
+    console.log('🔄 Historical load endpoint called');
+    console.log('📝 Request body:', req.body);
+    
     const { fromDate, toDate } = req.body || {};
     
     // Validar fechas requeridas
     if (!fromDate || !toDate) {
+      console.log('❌ Missing dates in request');
       return res.status(400).json({ 
         error: 'fromDate and toDate are required',
         message: 'Debe proporcionar fechas de inicio y fin'
@@ -792,13 +796,23 @@ syncRouter.post('/load-historical', requireAuth, async (req, res) => {
     console.log(`⏱️ This may take several minutes depending on data volume...`);
     
     // Verificar datos existentes antes de la carga
+    console.log('🔍 Checking existing data...');
     let existingOrders = 0;
-    if (process.env.DATABASE_URL) {
-      const result = await dbWrapper.query('SELECT COUNT(*) as count FROM sale_orders');
-      existingOrders = result[0].count;
-    } else {
-      const db = getDb();
-      existingOrders = db.prepare('SELECT COUNT(*) as count FROM sale_orders').get().count;
+    try {
+      if (process.env.DATABASE_URL) {
+        console.log('🐘 Using PostgreSQL for count query');
+        const result = await dbWrapper.query('SELECT COUNT(*) as count FROM sale_orders');
+        existingOrders = result[0].count;
+        console.log('✅ PostgreSQL count query successful');
+      } else {
+        console.log('🗃️ Using SQLite for count query');
+        const db = getDb();
+        existingOrders = db.prepare('SELECT COUNT(*) as count FROM sale_orders').get().count;
+        console.log('✅ SQLite count query successful');
+      }
+    } catch (error) {
+      console.error('❌ Error checking existing orders:', error);
+      throw error;
     }
     
     console.log(`📊 Existing orders before load: ${existingOrders}`);
@@ -806,13 +820,23 @@ syncRouter.post('/load-historical', requireAuth, async (req, res) => {
     const result = await performSync(fromDate, toDate, false);
     
     // Verificar datos después de la carga
+    console.log('🔍 Checking final data count...');
     let finalOrders = 0;
-    if (process.env.DATABASE_URL) {
-      const result = await dbWrapper.query('SELECT COUNT(*) as count FROM sale_orders');
-      finalOrders = result[0].count;
-    } else {
-      const db = getDb();
-      finalOrders = db.prepare('SELECT COUNT(*) as count FROM sale_orders').get().count;
+    try {
+      if (process.env.DATABASE_URL) {
+        console.log('🐘 Using PostgreSQL for final count query');
+        const result = await dbWrapper.query('SELECT COUNT(*) as count FROM sale_orders');
+        finalOrders = result[0].count;
+        console.log('✅ PostgreSQL final count query successful');
+      } else {
+        console.log('🗃️ Using SQLite for final count query');
+        const db = getDb();
+        finalOrders = db.prepare('SELECT COUNT(*) as count FROM sale_orders').get().count;
+        console.log('✅ SQLite final count query successful');
+      }
+    } catch (error) {
+      console.error('❌ Error checking final orders:', error);
+      throw error;
     }
     
     const newOrders = finalOrders - existingOrders;
