@@ -246,7 +246,7 @@ export function App() {
     console.log('ℹ️ Data initialization was completed during build process')
   }, [logged])
 
-  // Polling automático cada 15 minutos (solo cuando está logged)
+  // Polling automático cada 30 minutos (solo cuando está logged)
   useEffect(() => {
     if (!logged) return
     
@@ -273,8 +273,8 @@ export function App() {
     // Polling inmediato al cargar
     pollData()
     
-    // Polling cada 15 minutos
-    const interval = setInterval(pollData, 15 * 60 * 1000)
+    // Polling cada 30 minutos
+    const interval = setInterval(pollData, 30 * 60 * 1000)
     return () => clearInterval(interval)
   }, [logged]) // Solo depende de logged, no de fechas
 

@@ -521,10 +521,10 @@ let lastAutoSync = null;
 let lastPoll = null;
 
 function startHybridSync() {
-  // Polling cada 15 minutos para datos nuevos
+  // Polling cada 30 minutos para datos nuevos
   pollingInterval = setInterval(() => {
     performPolling();
-  }, 15 * 60 * 1000); // 15 minutos
+  }, 30 * 60 * 1000); // 30 minutos
   
   // Validación local cada 6 horas (sin llamadas a API)
   autoSyncInterval = setInterval(() => {
@@ -535,7 +535,7 @@ function startHybridSync() {
   performPolling();
   
   console.log('🔄 Optimized hybrid sync started:');
-  console.log('  - Polling every 15 minutes for new data');
+  console.log('  - Polling every 30 minutes for new data');
   console.log('  - Local validation every 6 hours (no API calls)');
 }
 
@@ -619,7 +619,7 @@ syncRouter.get('/status', (req, res) => {
     lastPoll: lastPoll,
     validationEnabled: !!autoSyncInterval,
     lastValidation: lastAutoSync,
-    nextPoll: pollingInterval ? new Date(buenosAiresTime.getTime() + 15 * 60 * 1000) : null,
+    nextPoll: pollingInterval ? new Date(buenosAiresTime.getTime() + 30 * 60 * 1000) : null,
     nextValidation: autoSyncInterval ? new Date(buenosAiresTime.getTime() + 6 * 60 * 60 * 1000) : null,
     currentTime: buenosAiresTime.toISOString(),
     timezone: 'America/Argentina/Buenos_Aires'
