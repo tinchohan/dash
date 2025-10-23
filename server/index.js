@@ -77,13 +77,39 @@ app.use('/auth', authRouter);
 app.use('/sync', syncRouter);
 app.use('/stats', statsRouter);
 
+// Debug endpoint to verify routing is working
+app.get('/debug/routes', (req, res) => {
+  res.json({
+    message: 'Routes are working correctly',
+    timestamp: new Date().toISOString(),
+    availableRoutes: [
+      'GET /healthz',
+      'GET /ping', 
+      'GET /debug/routes',
+      'POST /auth/login',
+      'POST /auth/logout',
+      'GET /sync/status',
+      'POST /sync/poll',
+      'POST /sync/validate',
+      'POST /sync/load-historical',
+      'GET /stats/overview',
+      'GET /stats/by-store',
+      'GET /stats/daily',
+      'GET /stats/top-products',
+      'GET /stats/stores',
+      'GET /stats/recent-sales'
+    ]
+  });
+});
+
 const publicDir = path.join(__dirname, 'public');
 app.use(express.static(publicDir));
 
 // Catch-all handler: send back React's index.html file for any non-API routes
 app.get('*', (req, res) => {
   // Only serve index.html for GET requests that don't start with API paths
-  if (req.path.startsWith('/auth') || req.path.startsWith('/sync') || req.path.startsWith('/stats')) {
+  // Note: POST requests to /sync and /auth should be handled by their respective routers
+  if (req.method === 'GET' && (req.path.startsWith('/auth') || req.path.startsWith('/sync') || req.path.startsWith('/stats'))) {
     return res.status(404).json({ error: 'API endpoint not found' });
   }
   res.sendFile(path.join(publicDir, 'index.html'));
