@@ -332,10 +332,13 @@ export function App() {
     try {
       setIsLoading(true)
       
-      let url = `${API}/api/stats/store-diagnosis/${storeId}`
+      // Usar endpoint de prueba primero
+      let url = `${API}/api/stats/diagnosis-test/${storeId}`
       if (fromDate && toDate) {
         url += `?fromDate=${fromDate}&toDate=${toDate}`
       }
+      
+      console.log('🔍 Testing diagnosis endpoint:', url)
       
       const response = await fetch(url, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }

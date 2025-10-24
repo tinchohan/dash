@@ -365,6 +365,23 @@ statsRouter.get('/test', (req, res) => {
   res.json({ message: 'Stats router is working!', timestamp: new Date().toISOString() });
 });
 
+// Endpoint de prueba para diagnóstico (sin autenticación)
+statsRouter.get('/diagnosis-test/:storeId', async (req, res) => {
+  try {
+    const { storeId } = req.params;
+    console.log('🔍 Diagnosis test called for store:', storeId);
+    
+    res.json({ 
+      message: 'Diagnosis test endpoint working!', 
+      storeId: storeId,
+      timestamp: new Date().toISOString() 
+    });
+  } catch (error) {
+    console.error('❌ Diagnosis test error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Endpoint específico para diagnosticar una tienda
 statsRouter.get('/store-diagnosis/:storeId', requireAuth, async (req, res) => {
   try {
